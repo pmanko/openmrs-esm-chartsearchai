@@ -202,6 +202,31 @@ describe('ModelPicker with LM Studio provider grouping', () => {
     expect(mockLoad.mock.invocationCallOrder[0]).toBeLessThan(mockSet.mock.invocationCallOrder[0]);
   });
 
+  it('surfaces an actionable memory message and rolls back when pre-load fails on resources', async () => {
+    mockFetch.mockResolvedValue(lmStudioSnapshot);
+    // LM Studio refuses to load (RAM full, won't evict explicitly-loaded models).
+    // The backend bubbles the real reason on responseBody.error (HTTP 503) — the
+    // picker must show THAT, not the generic openmrsFetch "Service unavailable".
+    mockLoad.mockRejectedValueOnce(
+      Object.assign(new Error('Service unavailable'), {
+        responseBody: {
+          error: "Failed to pre-load model 'meta-llama-3.1-8b-instruct': HTTP 500: insufficient system resources",
+        },
+      }),
+    );
+
+    render(<ModelPicker />);
+    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Llama 3.1 8B Instruct/i }));
+
+    // Actionable, resource-specific message — not the opaque generic error.
+    expect(await screen.findByText(/not enough memory/i)).toBeInTheDocument();
+    // Switch must NOT proceed to the GP flip when the model can't be loaded.
+    expect(mockSet).not.toHaveBeenCalled();
+    // Optimistic selection rolled back to the original current model.
+    expect(screen.getByRole('button', { name: /select model/i })).toHaveTextContent('google/gemma-3-12b');
+  });
+
   it('does NOT pre-load when the selected model is already loaded', async () => {
     // Switching from current (Llama, loaded) to another loaded model should
     // skip the load call — it's already in memory, just flip the GP.

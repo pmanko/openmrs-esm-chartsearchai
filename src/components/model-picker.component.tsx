@@ -11,6 +11,7 @@ import {
   type ModelEntry,
   type ModelListResponse,
 } from '../api/chartsearchai';
+import { extractApiError } from '../utils/api-error';
 import styles from './model-picker.scss';
 
 interface ModelPickerProps {
@@ -107,8 +108,19 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
       } catch (err) {
         // Roll back optimistic flip on failure.
         setSnapshot((prev) => (prev ? { ...prev, current: snapshot.current } : prev));
-        const message = err instanceof Error ? err.message : t('modelSwitchFailed', 'Failed to switch model');
-        setSwitchError(message);
+        // Surface the backend's real reason (it lives on responseBody.error, not
+        // err.message). A model-load resource failure — LM Studio refusing to
+        // load because memory is full and it won't evict explicitly-loaded
+        // models — gets an actionable message instead of an opaque one.
+        const { message, isResourceError } = extractApiError(err);
+        const display = isResourceError
+          ? t(
+              'modelResourceError',
+              'Not enough memory to load "{{model}}". Unload a model in LM Studio (or pick one already loaded), then try again.',
+              { model: modelName },
+            )
+          : message || t('modelSwitchFailed', 'Failed to switch model');
+        setSwitchError(display);
       } finally {
         setPendingModel(null);
       }
