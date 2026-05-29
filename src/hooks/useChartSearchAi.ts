@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useConfig, useStore } from '@openmrs/esm-framework';
+import { useStore } from '@openmrs/esm-framework';
 import {
   type AiBlock,
   type AiReference,
@@ -9,7 +9,6 @@ import {
   fetchChatHistory,
   startNewChat,
 } from '../api/chartsearchai';
-import { type ChartSearchAiConfig } from '../config-schema';
 import { chatSessionStore } from '../store/chat-session.store';
 
 export interface ChatMessage {
@@ -103,7 +102,6 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
 }
 
 export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
-  const config = useConfig<ChartSearchAiConfig>();
   const { messagesByPatient, sessionUuidByPatient } = useStore(chatSessionStore);
   const messages: ChatMessage[] = patientUuid ? (messagesByPatient[patientUuid] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES;
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -178,26 +176,23 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
     }
   }, [patientUuid]);
 
-  const startNewChatSession = useCallback(
-    (patientUuid: string) => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      inFlightMessageIdRef.current = null;
-      updateMessages(patientUuid, () => []);
-      setSessionUuid(patientUuid, null);
-      startNewChat(patientUuid)
-        .then((response) => {
-          if (!isMountedRef.current) return;
-          setSessionUuid(patientUuid, response.session ?? null);
-        })
-        .catch((err) => {
-          console.warn('[useChartSearchAi] startNewChat failed', err);
-        });
-    },
-    [],
-  );
+  const startNewChatSession = useCallback((patientUuid: string) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    inFlightMessageIdRef.current = null;
+    updateMessages(patientUuid, () => []);
+    setSessionUuid(patientUuid, null);
+    startNewChat(patientUuid)
+      .then((response) => {
+        if (!isMountedRef.current) return;
+        setSessionUuid(patientUuid, response.session ?? null);
+      })
+      .catch((err) => {
+        console.warn('[useChartSearchAi] startNewChat failed', err);
+      });
+  }, []);
 
   const submitQuestion = useCallback(
     (patientUuid: string, question: string) => {

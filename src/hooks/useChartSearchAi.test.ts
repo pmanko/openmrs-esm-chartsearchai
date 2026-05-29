@@ -355,9 +355,7 @@ describe('useChartSearchAi', () => {
 
     expect(result.current.messages).toEqual([]);
     expect(mockStartNewChat).toHaveBeenCalledWith('patient-uuid');
-    await waitFor(() =>
-      expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-2'),
-    );
+    await waitFor(() => expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-2'));
   });
 
   it('aborts in-flight request on unmount', async () => {

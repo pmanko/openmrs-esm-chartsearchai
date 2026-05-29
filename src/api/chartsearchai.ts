@@ -443,11 +443,33 @@ export async function startNewChat(
   return response.data as ChatHistoryResponse;
 }
 
+export interface ModelEntry {
+  /** Identifier passed to /v1/chat/completions; LM Studio v1 `key`. */
+  id: string;
+  /** Human-readable label. Defaults to `id` when the backend doesn't supply one. */
+  displayName: string;
+  /** "llm" | "embedding" — only "llm" entries reach the picker. */
+  type: string;
+  /** True when LM Studio reports the model is in memory; false otherwise. */
+  loaded: boolean;
+  /** Max context length per LM Studio; absent when unknown. */
+  maxContextLength?: number;
+}
+
 export interface ModelListResponse {
   engine: 'remote' | 'local' | string;
   current: string | null;
   available: string[];
   endpointUrl?: string | null;
+  /**
+   * Backend probe outcome:
+   *   "lm-studio"             — /api/v1/models returned the v1 shape; entries[] populated.
+   *   "generic-openai-compat" — fell back to /v1/models; entries[] derived from IDs only.
+   *   undefined / null        — legacy backend (PR #15 baseline) didn't supply the field.
+   */
+  provider?: 'lm-studio' | 'generic-openai-compat' | string | null;
+  /** Per-entry richer info. Populated when the backend probe gave it; absent otherwise. */
+  entries?: ModelEntry[];
 }
 
 /**
@@ -480,4 +502,28 @@ export async function setCurrentModel(
     signal: abortController?.signal,
   });
   return response.data as { current: string };
+}
+
+/**
+ * Pre-load a model into LM Studio memory. Calls the backend's
+ * POST /chartsearchai/model/load which routes through to LM Studio's
+ * /api/v1/models/load. Blocks until the model is in memory (LM Studio's
+ * load endpoint is synchronous; default 2-minute backend timeout).
+ *
+ * <p>Used by the picker when the user selects an entry whose `loaded`
+ * flag is false — pays the load latency at pick-time (with a spinner)
+ * rather than on the first chat turn (with an opaque pause).
+ *
+ * <p>503 when the active provider isn't LM Studio (backend returns
+ * silently in that case; this resolves with `loaded: ""`). 400 for
+ * blank input.
+ */
+export async function loadModel(modelName: string, abortController?: AbortController): Promise<{ loaded: string }> {
+  const response = await openmrsFetch(`${BASE_PATH}/model/load`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ modelName }),
+    signal: abortController?.signal,
+  });
+  return response.data as { loaded: string };
 }

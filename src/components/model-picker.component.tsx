@@ -4,7 +4,13 @@ import { InlineNotification, InlineLoading } from '@carbon/react';
 import { ChevronDown, Checkmark } from '@carbon/react/icons';
 import { useConfig } from '@openmrs/esm-framework';
 import { type ChartSearchAiConfig } from '../config-schema';
-import { fetchAvailableModels, setCurrentModel, type ModelListResponse } from '../api/chartsearchai';
+import {
+  fetchAvailableModels,
+  loadModel,
+  setCurrentModel,
+  type ModelEntry,
+  type ModelListResponse,
+} from '../api/chartsearchai';
 import styles from './model-picker.scss';
 
 interface ModelPickerProps {
@@ -85,6 +91,15 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
       // Optimistic flip — popover reflects new selection immediately.
       setSnapshot((prev) => (prev ? { ...prev, current: modelName } : prev));
       try {
+        // Pre-load on select: when the target model isn't loaded yet and the
+        // backend probed an LM Studio v1 provider, ask LM Studio to load it
+        // BEFORE flipping the GP — the user pays the load latency at
+        // pick-time (with a visible spinner) rather than on first chat turn.
+        const targetEntry = snapshot.entries?.find((e) => e.id === modelName);
+        const isLmStudio = snapshot.provider === 'lm-studio';
+        if (isLmStudio && targetEntry && targetEntry.loaded === false) {
+          await loadModel(modelName);
+        }
         const result = await setCurrentModel(modelName);
         setSnapshot((prev) => (prev ? { ...prev, current: result.current } : prev));
         onSwitched?.(result.current);
@@ -92,8 +107,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
       } catch (err) {
         // Roll back optimistic flip on failure.
         setSnapshot((prev) => (prev ? { ...prev, current: snapshot.current } : prev));
-        const message =
-          err instanceof Error ? err.message : t('modelSwitchFailed', 'Failed to switch model');
+        const message = err instanceof Error ? err.message : t('modelSwitchFailed', 'Failed to switch model');
         setSwitchError(message);
       } finally {
         setPendingModel(null);
@@ -125,6 +139,16 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
 
   const current = snapshot.current ?? '';
 
+  // Build a unified list of {entry, isCurrent} so the same render handles
+  // both legacy (no entries, just available: string[]) and enriched (entries
+  // with loaded state, displayName) backend response shapes.
+  const renderEntries: ModelEntry[] =
+    snapshot.entries && snapshot.entries.length > 0
+      ? snapshot.entries
+      : snapshot.available.map((id) => ({ id, displayName: id, type: 'llm', loaded: false }));
+
+  const showLmStudioHeader = snapshot.provider === 'lm-studio';
+
   return (
     <div className={styles.root} ref={rootRef}>
       <button
@@ -137,25 +161,35 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
         onClick={() => setIsOpen((prev) => !prev)}
       >
         <span className={styles.triggerLabel}>{current || t('noModel', 'No model')}</span>
-        {pendingModel ? (
-          <InlineLoading className={styles.triggerLoading} description="" />
-        ) : (
-          <ChevronDown size={16} />
-        )}
+        {pendingModel ? <InlineLoading className={styles.triggerLoading} description="" /> : <ChevronDown size={16} />}
       </button>
       {isOpen && (
-        <ul className={styles.menu} role="listbox">
-          {snapshot.available.map((modelName) => {
-            const selected = modelName === current;
+        <ul className={styles.menu} role="listbox" aria-label={t('selectModel', 'Select model')}>
+          {showLmStudioHeader ? (
+            <li className={styles.groupHeader} role="presentation">
+              {t('lmStudioGroup', 'LM Studio')}
+            </li>
+          ) : null}
+          {renderEntries.map((entry) => {
+            const selected = entry.id === current;
+            const notLoadedAffix = showLmStudioHeader && entry.loaded === false ? t('notLoaded', '(not loaded)') : null;
             return (
-              <li key={modelName} role="option" aria-selected={selected}>
+              <li key={entry.id} role="option" aria-selected={selected}>
                 <button
                   type="button"
                   className={`${styles.menuItem} ${selected ? styles.menuItemSelected : ''}`}
-                  onClick={() => handleSelect(modelName)}
+                  onClick={() => handleSelect(entry.id)}
                   disabled={!!pendingModel}
+                  // aria-label drives screen reader announcement AND
+                  // testing-library's getByRole({ name: ... }) match. Include
+                  // the affix text so tests asserting "(not loaded)" can find
+                  // the option by display name + state in one query.
+                  aria-label={notLoadedAffix ? `${entry.displayName} ${notLoadedAffix}` : entry.displayName}
                 >
-                  <span className={styles.menuItemLabel}>{modelName}</span>
+                  <span className={styles.menuItemMain}>
+                    <span className={styles.menuItemLabel}>{entry.displayName}</span>
+                    {notLoadedAffix ? <span className={styles.menuItemAffix}>{notLoadedAffix}</span> : null}
+                  </span>
                   {selected ? <Checkmark size={16} /> : null}
                 </button>
               </li>

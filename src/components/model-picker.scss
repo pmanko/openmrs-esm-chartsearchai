@@ -95,6 +95,39 @@
   white-space: nowrap;
 }
 
+.menuItemAffix {
+  @include type.type-style('label-01');
+  color: colors.$gray-60;
+  margin-left: layout.$spacing-03;
+  flex-shrink: 0;
+}
+
+.menuItemMain {
+  display: flex;
+  align-items: baseline;
+  gap: layout.$spacing-02;
+  flex: 1;
+  overflow: hidden;
+}
+
+.groupHeader {
+  @include type.type-style('label-01');
+  padding: layout.$spacing-02 layout.$spacing-04;
+  color: colors.$gray-70;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-top: 1px solid colors.$gray-20;
+  margin-top: layout.$spacing-02;
+  padding-top: layout.$spacing-03;
+
+  &:first-child {
+    border-top: none;
+    margin-top: 0;
+    padding-top: layout.$spacing-02;
+  }
+}
+
 .switchError {
   position: absolute;
   bottom: calc(100% + 4px);
