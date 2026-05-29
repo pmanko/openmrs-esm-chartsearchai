@@ -19,6 +19,15 @@ const mockSet = setCurrentModel as Mock;
 const mockLoad = loadModel as Mock;
 const mockUseConfig = useConfig as unknown as Mock;
 
+// The picker is a Carbon MenuButton: the trigger button is labelled with the
+// current model, and opening it portals a `role="menu"` to document.body whose
+// model options carry `role="menuitemradio"`.
+const openMenu = async (currentModel: string) => {
+  const trigger = await screen.findByRole('button', { name: new RegExp(currentModel.replace('/', '\\/'), 'i') });
+  fireEvent.click(trigger);
+  return screen.findByRole('menu');
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseConfig.mockReturnValue({ showModelPicker: true });
@@ -73,31 +82,28 @@ describe('ModelPicker interaction', () => {
   it('renders a trigger button showing the current model', async () => {
     mockFetch.mockResolvedValueOnce(snapshot);
     render(<ModelPicker />);
-    const trigger = await screen.findByRole('button', { name: /select model/i });
+    const trigger = await screen.findByRole('button', { name: /gemma-4-e2b-it/i });
     expect(trigger).toHaveTextContent('gemma-4-e2b-it');
   });
 
-  it('opens the popover on click and lists all available models with the current one checked', async () => {
-    mockFetch.mockResolvedValue(snapshot); // resolves on mount AND on open
+  it('opens the menu and lists all available models with the current one checked', async () => {
+    mockFetch.mockResolvedValue(snapshot);
     render(<ModelPicker />);
-    const trigger = await screen.findByRole('button', { name: /select model/i });
-    fireEvent.click(trigger);
-    expect(screen.getByRole('listbox')).toBeInTheDocument();
-    // 3 option entries (one per available)
-    expect(screen.getAllByRole('option')).toHaveLength(3);
-    // The current model option carries aria-selected=true
-    const selected = screen.getByRole('option', { selected: true });
+    await openMenu('gemma-4-e2b-it');
+    // 3 radio options (one per available)
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(3);
+    // The current model option carries aria-checked=true
+    const selected = screen.getByRole('menuitemradio', { checked: true });
     expect(selected).toHaveTextContent('gemma-4-e2b-it');
   });
 
-  it('calls setCurrentModel on click and surfaces the new selection optimistically', async () => {
+  it('calls setCurrentModel on select and surfaces the new selection optimistically', async () => {
     mockFetch.mockResolvedValue(snapshot);
     mockSet.mockResolvedValueOnce({ current: 'google/gemma-4-31b' });
     const onSwitched = vi.fn();
     render(<ModelPicker onSwitched={onSwitched} />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    // The clickable target is the menu-item button inside the <li role=option>.
-    fireEvent.click(screen.getByRole('button', { name: /google\/gemma-4-31b/i }));
+    await openMenu('gemma-4-e2b-it');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /google\/gemma-4-31b/i }));
     await waitFor(() => expect(mockSet).toHaveBeenCalledWith('google/gemma-4-31b'));
     expect(onSwitched).toHaveBeenCalledWith('google/gemma-4-31b');
   });
@@ -106,22 +112,21 @@ describe('ModelPicker interaction', () => {
     mockFetch.mockResolvedValue(snapshot);
     mockSet.mockRejectedValueOnce(new Error("Model 'bogus' is not in the active endpoint's /v1/models list."));
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    fireEvent.click(screen.getByRole('button', { name: /google\/gemma-4-31b/i }));
-    // After rollback, trigger goes back to original selection
+    await openMenu('gemma-4-e2b-it');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /google\/gemma-4-31b/i }));
+    // After rollback, the trigger goes back to the original selection
     await waitFor(() => {
-      const trigger = screen.getByRole('button', { name: /select model/i });
-      expect(trigger).toHaveTextContent('gemma-4-e2b-it');
+      expect(screen.getByRole('button', { name: /gemma-4-e2b-it/i })).toBeInTheDocument();
     });
     // Error notification visible
     expect(screen.getByText(/Failed to switch model/i)).toBeInTheDocument();
   });
 
-  it('does NOT call setCurrentModel when the user clicks the currently-selected model', async () => {
+  it('does NOT call setCurrentModel when the user picks the currently-selected model', async () => {
     mockFetch.mockResolvedValue(snapshot);
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    fireEvent.click(screen.getByRole('button', { name: /gemma-4-e2b-it/i }));
+    await openMenu('gemma-4-e2b-it');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /gemma-4-e2b-it/i }));
     expect(mockSet).not.toHaveBeenCalled();
   });
 });
@@ -150,38 +155,34 @@ describe('ModelPicker with LM Studio provider grouping', () => {
     ],
   };
 
-  it('renders an "LM Studio" section header above the model list', async () => {
+  it('labels the radio group "LM Studio" (Carbon accessible group name)', async () => {
     mockFetch.mockResolvedValue(lmStudioSnapshot);
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    // The group header lives inside the listbox, NOT outside, so screen readers
-    // announce it alongside the option list. Implementation MAY use a <li role="presentation"> with
-    // aria-label, a section heading, or a plain <header> — the test just asserts
-    // the visible "LM Studio" string lives within the open popover.
-    const listbox = screen.getByRole('listbox');
-    expect(listbox).toHaveTextContent(/LM Studio/i);
+    await openMenu('google/gemma-3-12b');
+    // Carbon MenuItemRadioGroup exposes its label as the accessible name of the
+    // `role="group"` element (aria-label), grouping the options for AT.
+    expect(screen.getByRole('group', { name: /LM Studio/i })).toBeInTheDocument();
   });
 
   it('shows a "(not loaded)" affix on entries whose loaded flag is false', async () => {
     mockFetch.mockResolvedValue(lmStudioSnapshot);
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
+    await openMenu('google/gemma-3-12b');
     // Loaded entry: no affix
-    const gemma = screen.getByRole('option', { name: /Gemma 3 12B/i });
+    const gemma = screen.getByRole('menuitemradio', { name: /Gemma 3 12B/i });
     expect(gemma).not.toHaveTextContent(/not loaded/i);
     // Not-loaded entries: affix present
-    const llama = screen.getByRole('option', { name: /Llama 3.1 8B Instruct/i });
+    const llama = screen.getByRole('menuitemradio', { name: /Llama 3.1 8B Instruct/i });
     expect(llama).toHaveTextContent(/not loaded/i);
-    const mistral = screen.getByRole('option', { name: /Mistral 7B Instruct/i });
+    const mistral = screen.getByRole('menuitemradio', { name: /Mistral 7B Instruct/i });
     expect(mistral).toHaveTextContent(/not loaded/i);
   });
 
   it('uses displayName instead of raw id when an entry provides one', async () => {
     mockFetch.mockResolvedValue(lmStudioSnapshot);
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    // Display name shown; raw id should NOT appear duplicated as visible text.
-    expect(screen.getByRole('option', { name: /Gemma 3 12B/i })).toBeInTheDocument();
+    await openMenu('google/gemma-3-12b');
+    expect(screen.getByRole('menuitemradio', { name: /Gemma 3 12B/i })).toBeInTheDocument();
   });
 
   it('pre-loads via loadModel before calling setCurrentModel when target is not loaded', async () => {
@@ -190,11 +191,10 @@ describe('ModelPicker with LM Studio provider grouping', () => {
     mockSet.mockResolvedValueOnce({ current: 'meta-llama-3.1-8b-instruct' });
 
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    // Click the menu-item button inside the option <li> — matches the older
-    // interaction tests' pattern. The button aria-label includes "(not loaded)"
-    // for affix-tagged entries, so the partial-match regex still finds it.
-    fireEvent.click(screen.getByRole('button', { name: /Llama 3.1 8B Instruct/i }));
+    await openMenu('google/gemma-3-12b');
+    // The aria-label includes "(not loaded)" for affix-tagged entries, so the
+    // partial-match regex still finds the option.
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Llama 3.1 8B Instruct/i }));
 
     await waitFor(() => expect(mockLoad).toHaveBeenCalledWith('meta-llama-3.1-8b-instruct'));
     await waitFor(() => expect(mockSet).toHaveBeenCalledWith('meta-llama-3.1-8b-instruct'));
@@ -216,15 +216,15 @@ describe('ModelPicker with LM Studio provider grouping', () => {
     );
 
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Llama 3.1 8B Instruct/i }));
+    await openMenu('google/gemma-3-12b');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Llama 3.1 8B Instruct/i }));
 
     // Actionable, resource-specific message — not the opaque generic error.
     expect(await screen.findByText(/not enough memory/i)).toBeInTheDocument();
     // Switch must NOT proceed to the GP flip when the model can't be loaded.
     expect(mockSet).not.toHaveBeenCalled();
     // Optimistic selection rolled back to the original current model.
-    expect(screen.getByRole('button', { name: /select model/i })).toHaveTextContent('google/gemma-3-12b');
+    expect(screen.getByRole('button', { name: /google\/gemma-3-12b/i })).toBeInTheDocument();
   });
 
   it('does NOT pre-load when the selected model is already loaded', async () => {
@@ -234,27 +234,23 @@ describe('ModelPicker with LM Studio provider grouping', () => {
       ...lmStudioSnapshot,
       current: 'meta-llama-3.1-8b-instruct',
       entries: lmStudioSnapshot.entries.map((e) =>
-        e.id === 'google/gemma-3-12b'
-          ? { ...e, loaded: true }
-          : e.id === 'meta-llama-3.1-8b-instruct'
-            ? { ...e, loaded: true }
-            : e,
+        e.id === 'meta-llama-3.1-8b-instruct' ? { ...e, loaded: true } : e,
       ),
     };
     mockFetch.mockResolvedValue(altSnapshot);
     mockSet.mockResolvedValueOnce({ current: 'google/gemma-3-12b' });
 
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Gemma 3 12B/i }));
+    await openMenu('meta-llama-3.1-8b-instruct');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Gemma 3 12B/i }));
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledWith('google/gemma-3-12b'));
     expect(mockLoad).not.toHaveBeenCalled();
   });
 
-  it('does NOT render the LM Studio header when provider is generic-openai-compat', async () => {
+  it('does NOT label the group "LM Studio" when provider is generic-openai-compat', async () => {
     // Backward compat: when the backend probe falls back to /v1/models (e.g.
-    // an Anthropic endpoint), no provider grouping should appear.
+    // an Anthropic endpoint), no LM Studio grouping should appear.
     mockFetch.mockResolvedValue({
       engine: 'remote',
       current: 'claude-opus-4-7',
@@ -267,14 +263,13 @@ describe('ModelPicker with LM Studio provider grouping', () => {
       ],
     });
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    const listbox = screen.getByRole('listbox');
-    expect(listbox).not.toHaveTextContent(/LM Studio/i);
+    await openMenu('claude-opus-4-7');
+    expect(screen.queryByRole('group', { name: /LM Studio/i })).not.toBeInTheDocument();
   });
 
   it('still works against the legacy response shape (no provider, no entries)', async () => {
-    // Older backend builds (PR #15 baseline) returned only {available: string[]}.
-    // The picker must keep rendering correctly without the enriched fields.
+    // Older backend builds returned only {available: string[]}. The picker must
+    // keep rendering correctly without the enriched fields.
     mockFetch.mockResolvedValue({
       engine: 'remote',
       current: 'one',
@@ -282,9 +277,9 @@ describe('ModelPicker with LM Studio provider grouping', () => {
       endpointUrl: 'http://host:1234/v1/chat/completions',
     });
     render(<ModelPicker />);
-    fireEvent.click(await screen.findByRole('button', { name: /select model/i }));
-    expect(screen.getAllByRole('option')).toHaveLength(2);
-    expect(screen.getByRole('option', { name: /one/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /two/i })).toBeInTheDocument();
+    await openMenu('one');
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(2);
+    expect(screen.getByRole('menuitemradio', { name: /one/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitemradio', { name: /two/i })).toBeInTheDocument();
   });
 });

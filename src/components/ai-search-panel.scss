@@ -1,10 +1,47 @@
 @use '@carbon/layout';
+@use '@carbon/colors';
+@use '@carbon/motion';
 
 .panelContainer {
   position: fixed;
   bottom: calc(layout.$spacing-07 + 3.5rem);
   right: layout.$spacing-07;
-  z-index: 9000;
+  // Sits below Carbon's modal layer (z('modal') = 9000) so the model picker's
+  // Carbon Menu — which renders at z('modal') — always floats above the panel,
+  // both docked and maximized. Still above the app header (z('header') = 8000).
+  z-index: 8900;
   width: 28rem;
   max-width: calc(100vw - 2 * layout.$spacing-07);
+}
+
+.panelContainerExpanded {
+  inset: layout.$spacing-07;
+  width: auto;
+  max-width: none;
+  // Flex so the single AiChatContent child stretches to fill the maximized box.
+  display: flex;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 8800;
+  background-color: rgba(colors.$gray-100, 0.5); // Carbon $overlay token value
+  animation: backdropFadeIn motion.$duration-moderate-01 motion.motion(entrance, productive);
+}
+
+@keyframes backdropFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop {
+    animation: none;
+  }
 }

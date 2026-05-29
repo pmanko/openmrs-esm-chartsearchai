@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConfig, usePatient } from '@openmrs/esm-framework';
-import { Close, Microphone, MicrophoneFilled, Renew, Send, StopFilled } from '@carbon/react/icons';
-import { InlineLoading } from '@carbon/react';
+import { Close, Maximize, Microphone, MicrophoneFilled, Minimize, Renew, Send, StopFilled } from '@carbon/react/icons';
+import { IconButton, InlineLoading } from '@carbon/react';
 import { useChartSearchAi } from '../hooks/useChartSearchAi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { type ChartSearchAiConfig } from '../config-schema';
@@ -14,9 +14,19 @@ interface AiChatContentProps {
   mode: 'floating' | 'workspace';
   onClose?: () => void;
   patientUuid?: string;
+  /** Floating mode only: whether the panel is maximized to full screen. */
+  isExpanded?: boolean;
+  /** Floating mode only: toggle the maximized state. When omitted, the maximize control is hidden. */
+  onToggleExpand?: () => void;
 }
 
-const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUuid: patientUuidProp }) => {
+const AiChatContent: React.FC<AiChatContentProps> = ({
+  mode,
+  onClose,
+  patientUuid: patientUuidProp,
+  isExpanded = false,
+  onToggleExpand,
+}) => {
   const { t } = useTranslation();
   const config = useConfig<ChartSearchAiConfig>();
   const { patient, isLoading: isPatientLoading } = usePatient();
@@ -156,7 +166,9 @@ const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUui
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
-      className={`${styles.chatRoot} ${mode === 'floating' ? styles.chatRootFloating : styles.chatRootWorkspace}`}
+      className={`${styles.chatRoot} ${mode === 'floating' ? styles.chatRootFloating : styles.chatRootWorkspace} ${
+        mode === 'floating' && isExpanded ? styles.chatRootFloatingExpanded : ''
+      }`}
       ref={rootRef}
       role={mode === 'floating' ? 'dialog' : undefined}
       aria-label={mode === 'floating' ? t('aiChartSearch', 'AI Chart Search') : undefined}
@@ -170,19 +182,30 @@ const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUui
           </span>
           <span className={styles.panelHeaderActions}>
             {messages.length > 0 && (
-              <button
-                className={styles.closeButton}
+              <IconButton
+                kind="ghost"
+                size="sm"
+                align="bottom"
+                label={t('newChat', 'New chat')}
                 onClick={handleNewChat}
-                aria-label={t('newChat', 'New chat')}
-                title={t('newChat', 'New chat')}
-                type="button"
               >
                 <Renew size={16} />
-              </button>
+              </IconButton>
             )}
-            <button className={styles.closeButton} onClick={onClose} aria-label={t('close', 'Close')} type="button">
+            {onToggleExpand && (
+              <IconButton
+                kind="ghost"
+                size="sm"
+                align="bottom"
+                label={isExpanded ? t('restore', 'Restore') : t('maximize', 'Maximize')}
+                onClick={onToggleExpand}
+              >
+                {isExpanded ? <Minimize size={16} /> : <Maximize size={16} />}
+              </IconButton>
+            )}
+            <IconButton kind="ghost" size="sm" align="bottom-end" label={t('close', 'Close')} onClick={onClose}>
               <Close size={16} />
-            </button>
+            </IconButton>
           </span>
         </div>
       )}

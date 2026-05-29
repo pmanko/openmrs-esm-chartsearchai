@@ -16,6 +16,15 @@
   max-height: 32rem;
 }
 
+// Maximized: fill the full-screen container (which is display:flex) instead of
+// the 32rem docked cap. Stronger elevation reads as a lifted modal surface.
+.chatRootFloatingExpanded {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+}
+
 .chatRootWorkspace {
   flex: 1;
   height: 100%;
