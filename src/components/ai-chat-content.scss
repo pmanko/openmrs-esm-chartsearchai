@@ -50,7 +50,14 @@
 .workspaceActions {
   display: flex;
   justify-content: flex-end;
+  gap: layout.$spacing-03;
   padding: layout.$spacing-02 layout.$spacing-05 0;
+  flex-shrink: 0;
+}
+
+.refreshNotice {
+  margin: 0 layout.$spacing-05 layout.$spacing-03;
+  max-width: none;
   flex-shrink: 0;
 }
 

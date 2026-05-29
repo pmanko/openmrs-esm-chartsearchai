@@ -97,6 +97,19 @@ describe('ModelPicker interaction', () => {
     expect(selected).toHaveTextContent('gemma-4-e2b-it');
   });
 
+  it('portals the menu outside the picker subtree so the chat panel cannot clip it', async () => {
+    // The clipping bug was the old absolute-positioned popover getting cut by the
+    // chat panel's overflow:hidden. Carbon portals the menu to document.body — this
+    // asserts the *mechanism* of the fix (jsdom can't compute the visual clip, but
+    // it can prove the menu is rendered outside the clipping subtree).
+    mockFetch.mockResolvedValue(snapshot);
+    const { container } = render(<ModelPicker />);
+    await openMenu('gemma-4-e2b-it');
+    const menu = screen.getByRole('menu');
+    expect(container.contains(menu)).toBe(false);
+    expect(document.body.contains(menu)).toBe(true);
+  });
+
   it('calls setCurrentModel on select and surfaces the new selection optimistically', async () => {
     mockFetch.mockResolvedValue(snapshot);
     mockSet.mockResolvedValueOnce({ current: 'google/gemma-4-31b' });

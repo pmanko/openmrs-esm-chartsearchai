@@ -443,6 +443,32 @@ export async function startNewChat(
   return response.data as ChatHistoryResponse;
 }
 
+export interface RefreshChartResponse {
+  /** The (unchanged) session uuid — refresh keeps the conversation. */
+  session: string;
+  /** Epoch millis of the rebuilt chart snapshot, or null if unset. */
+  chartBuiltAt: number | null;
+}
+
+/**
+ * Rebuild the patient's current chart snapshot in place, keeping the
+ * conversation. The counterpart to {@link startNewChat}: that wipes the
+ * transcript; this keeps it and just re-pulls fresher chart data so the next
+ * turn reasons over the updated chart. Hits POST {@code /chat/refresh-chart}.
+ */
+export async function refreshChartSnapshot(
+  patientUuid: string,
+  abortController?: AbortController,
+): Promise<RefreshChartResponse> {
+  const response = await openmrsFetch(`${BASE_PATH}/chat/refresh-chart`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ patient: patientUuid }),
+    signal: abortController?.signal,
+  });
+  return response.data as RefreshChartResponse;
+}
+
 export interface ModelEntry {
   /** Identifier passed to /v1/chat/completions; LM Studio v1 `key`. */
   id: string;
