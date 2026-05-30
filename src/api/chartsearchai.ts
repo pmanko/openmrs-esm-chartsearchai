@@ -504,6 +504,64 @@ export async function setCurrentModel(
   return response.data as { current: string };
 }
 
+/** One model under an endpoint section (backend GET /endpoints shape). */
+export interface EndpointModel {
+  id: string;
+  displayName: string;
+  loaded: boolean;
+}
+
+/** A picker section: one configured endpoint with its live model list. */
+export interface EndpointSection {
+  /** Human label, e.g. "LM Studio" / "Med Agent Hub". */
+  label: string;
+  /** The chat-completions URL this endpoint points at. */
+  url: string;
+  provider?: string | null;
+  /** False when the endpoint's model-list probe failed — render it disabled. */
+  reachable: boolean;
+  /** True for the endpoint chartsearchai is currently pointed at. */
+  current: boolean;
+  models: EndpointModel[];
+}
+
+export interface EndpointListResponse {
+  endpoints: EndpointSection[];
+  /** The active endpoint + model GPs, for marking the current selection. */
+  current?: { endpointUrl: string | null; modelName: string | null };
+}
+
+/**
+ * List the configured endpoints as picker sections, each with its live model
+ * list (GET /chartsearchai/endpoints). 503 (local engine / misconfig) throws;
+ * the picker treats throw the same as "hidden".
+ */
+export async function fetchEndpoints(abortController?: AbortController): Promise<EndpointListResponse> {
+  const response = await openmrsFetch(`${BASE_PATH}/endpoints`, {
+    signal: abortController?.signal,
+  });
+  return response.data as EndpointListResponse;
+}
+
+/**
+ * Switch the active endpoint AND model in one step. The backend validates the
+ * URL is a registered endpoint and the model is served there before writing
+ * both the endpointUrl + modelName GPs; invalid input returns 400.
+ */
+export async function setEndpointModel(
+  endpointUrl: string,
+  modelName: string,
+  abortController?: AbortController,
+): Promise<{ endpointUrl: string; current: string }> {
+  const response = await openmrsFetch(`${BASE_PATH}/endpoint`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpointUrl, modelName }),
+    signal: abortController?.signal,
+  });
+  return response.data as { endpointUrl: string; current: string };
+}
+
 /**
  * Pre-load a model into LM Studio memory. Calls the backend's
  * POST /chartsearchai/model/load which routes through to LM Studio's
