@@ -3,13 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { InlineLoading, InlineNotification, MenuButton, MenuItemRadioGroup } from '@carbon/react';
 import { useConfig } from '@openmrs/esm-framework';
 import { type ChartSearchAiConfig } from '../config-schema';
-import {
-  fetchAvailableModels,
-  loadModel,
-  setCurrentModel,
-  type ModelEntry,
-  type ModelListResponse,
-} from '../api/chartsearchai';
+import { fetchEndpoints, setEndpointModel, type EndpointListResponse } from '../api/chartsearchai';
 import { extractApiError } from '../utils/api-error';
 import styles from './model-picker.scss';
 
@@ -19,115 +13,112 @@ interface ModelPickerProps {
 }
 
 /**
- * Inline model picker for the chat panel footer. A Carbon MenuButton whose menu
- * is a MenuItemRadioGroup — single-select radio semantics with a group header.
- * Carbon renders the menu in a portal on document.body and clamps it to the
- * viewport, so it is never clipped by the chat panel's overflow regardless of
- * panel height.
+ * Inline endpoint+model picker for the chat panel footer. A Carbon MenuButton
+ * whose menu has one MenuItemRadioGroup per configured endpoint (LM Studio,
+ * Med Agent Hub, ...). Carbon portals the menu to document.body and clamps it to
+ * the viewport, so it is never clipped by the chat panel's overflow regardless
+ * of panel height. Selecting a model under a section switches chartsearchai to
+ * that endpoint AND model in one step.
  *
  * Hides itself when:
  *   - config.showModelPicker is false
- *   - the backend reports engine=local (no model-switching applicable)
- *   - the available list has fewer than 2 entries (nothing to switch to)
- *   - the /models fetch fails (503 from local-engine backend is the common case)
+ *   - the /endpoints fetch fails (503 from a local-engine backend is the common case)
+ *   - there are fewer than 2 selectable models across all reachable endpoints
  */
 const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   const { t } = useTranslation();
   const { showModelPicker } = useConfig<ChartSearchAiConfig>();
-  const [snapshot, setSnapshot] = useState<ModelListResponse | null>(null);
+  const [data, setData] = useState<EndpointListResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [pendingModel, setPendingModel] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
 
   // Load once on mount. The chat panel unmounts/remounts this component each
-  // time it opens, so an out-of-band model change (operator ran
-  // chartsearch-configure) is picked up the next time the panel is opened.
+  // time it opens, so an out-of-band change (operator ran chartsearch-configure,
+  // another endpoint came up) is picked up the next time the panel is opened.
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchAvailableModels(ctrl)
-      .then((data) => {
-        setSnapshot(data);
+    fetchEndpoints(ctrl)
+      .then((d) => {
+        setData(d);
         setLoadError(null);
       })
       .catch((err) => {
         if (err?.name === 'AbortError') return;
-        setLoadError(err?.message ?? 'Failed to load model list');
-        setSnapshot(null);
+        setLoadError(err?.message ?? 'Failed to load endpoints');
+        setData(null);
       });
     return () => ctrl.abort();
   }, []);
 
+  const current = data?.current;
+
   const handleSelect = useCallback(
-    async (modelName: string) => {
-      if (!snapshot || modelName === snapshot.current || pendingModel) return;
-      setPendingModel(modelName);
+    async (url: string, modelId: string) => {
+      if (pending) return;
+      if (current && current.endpointUrl === url && current.modelName === modelId) return;
+      setPending(`${url}::${modelId}`);
       setSwitchError(null);
       // Optimistic flip — trigger label reflects the new selection immediately.
-      setSnapshot((prev) => (prev ? { ...prev, current: modelName } : prev));
+      setData((prev) => (prev ? { ...prev, current: { endpointUrl: url, modelName: modelId } } : prev));
       try {
-        // Pre-load on select: when the target model isn't loaded yet and the
-        // backend probed an LM Studio v1 provider, ask LM Studio to load it
-        // BEFORE flipping the GP — the user pays the load latency at pick-time
-        // (with a visible spinner) rather than on first chat turn.
-        const targetEntry = snapshot.entries?.find((e) => e.id === modelName);
-        const isLmStudio = snapshot.provider === 'lm-studio';
-        if (isLmStudio && targetEntry && targetEntry.loaded === false) {
-          await loadModel(modelName);
-        }
-        const result = await setCurrentModel(modelName);
-        setSnapshot((prev) => (prev ? { ...prev, current: result.current } : prev));
+        const result = await setEndpointModel(url, modelId);
+        setData((prev) =>
+          prev ? { ...prev, current: { endpointUrl: result.endpointUrl, modelName: result.current } } : prev,
+        );
         onSwitched?.(result.current);
       } catch (err) {
-        // Roll back optimistic flip on failure.
-        setSnapshot((prev) => (prev ? { ...prev, current: snapshot.current } : prev));
-        // Surface the backend's real reason (it lives on responseBody.error, not
-        // err.message). A model-load resource failure — LM Studio refusing to
-        // load because memory is full and it won't evict explicitly-loaded
-        // models — gets an actionable message instead of an opaque one.
+        // Roll back the optimistic flip.
+        setData((prev) => (prev ? { ...prev, current } : prev));
+        // Surface the backend's real reason (it lives on responseBody.error).
         const { message, isResourceError } = extractApiError(err);
         const display = isResourceError
           ? t(
               'modelResourceError',
               'Not enough memory to load "{{model}}". Unload a model in LM Studio (or pick one already loaded), then try again.',
-              { model: modelName },
+              { model: modelId },
             )
           : message || t('modelSwitchFailed', 'Failed to switch model');
         setSwitchError(display);
       } finally {
-        setPendingModel(null);
+        setPending(null);
       }
     },
-    [snapshot, pendingModel, onSwitched, t],
+    [pending, current, onSwitched, t],
   );
 
-  // Build a unified entry list so the same render handles both legacy
-  // (available: string[]) and enriched (entries with loaded state, displayName)
-  // backend response shapes. Memoised so the radio group's items/itemToString
-  // stay referentially stable between renders.
-  const { itemIds, itemToString, groupLabel } = useMemo(() => {
-    const isLmStudio = snapshot?.provider === 'lm-studio';
-    const entries: ModelEntry[] =
-      snapshot?.entries && snapshot.entries.length > 0
-        ? snapshot.entries
-        : (snapshot?.available ?? []).map((id) => ({ id, displayName: id, type: 'llm', loaded: false }));
-    const byId = new Map(entries.map((e) => [e.id, e]));
-    return {
-      itemIds: entries.map((e) => e.id),
-      // MenuItem renders its label as plain text, so the "(not loaded)" affix is
-      // folded into the string rather than carried as a styled node. Carbon types
-      // the radio group's item as `unknown` (the generic is erased by forwardRef),
-      // so the param is widened and narrowed back to the id string here.
-      itemToString: (item: unknown) => {
-        const id = item as string;
-        const e = byId.get(id);
-        if (!e) return id;
-        return isLmStudio && e.loaded === false ? `${e.displayName} ${t('notLoaded', '(not loaded)')}` : e.displayName;
-      },
-      groupLabel: isLmStudio ? t('lmStudioGroup', 'LM Studio') : t('models', 'Models'),
-    };
-  }, [snapshot, t]);
+  // One radio group per reachable endpoint. Memoised so the groups' items /
+  // itemToString stay referentially stable between renders.
+  const sections = useMemo(() => {
+    const endpoints = data?.endpoints ?? [];
+    return endpoints
+      .filter((ep) => ep.reachable && ep.models.length > 0)
+      .map((ep) => {
+        // "(not loaded)" is only meaningful where the backend probes load state
+        // (LM Studio); generic endpoints (the agent team) don't have it.
+        const showLoaded = ep.provider === 'lm-studio';
+        const byId = new Map(ep.models.map((m) => [m.id, m]));
+        return {
+          url: ep.url,
+          label: ep.label,
+          itemIds: ep.models.map((m) => m.id),
+          // Only the active endpoint's group carries a selected radio.
+          selectedItem: current && current.endpointUrl === ep.url ? current.modelName ?? '' : '',
+          // MenuItem renders its label as plain text, so the affix is folded into
+          // the string. Carbon types the radio item as `unknown`, so widen+narrow.
+          itemToString: (item: unknown) => {
+            const id = item as string;
+            const m = byId.get(id);
+            if (!m) return id;
+            return showLoaded && m.loaded === false
+              ? `${m.displayName} ${t('notLoaded', '(not loaded)')}`
+              : m.displayName;
+          },
+        };
+      });
+  }, [data, current, t]);
 
-  // Hide conditions — order matters for cheapest-first.
+  // Hide conditions — cheapest first.
   if (showModelPicker === false) {
     return null;
   }
@@ -136,38 +127,43 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     // still works without a picker.
     return null;
   }
-  if (!snapshot) {
+  if (!data) {
     // Initial load — render nothing rather than a layout-shifting spinner.
     return null;
   }
-  if (snapshot.engine !== 'remote') {
-    return null;
-  }
-  if (!snapshot.available || snapshot.available.length < 2) {
+  const totalModels = sections.reduce((n, s) => n + s.itemIds.length, 0);
+  if (totalModels < 2) {
     return null;
   }
 
-  const current = snapshot.current ?? '';
+  // Trigger label: "<endpoint> · <model>" for the current selection.
+  let triggerLabel = t('noModel', 'No model');
+  if (current) {
+    const ep = (data.endpoints ?? []).find((e) => e.url === current.endpointUrl);
+    const m = ep?.models.find((x) => x.id === current.modelName);
+    if (ep && m) {
+      triggerLabel = `${ep.label} · ${m.displayName}`;
+    } else if (current.modelName) {
+      triggerLabel = current.modelName;
+    }
+  }
 
   return (
     <div className={styles.root}>
       <div className={styles.triggerRow}>
-        <MenuButton
-          label={current || t('noModel', 'No model')}
-          kind="ghost"
-          size="sm"
-          menuAlignment="top-end"
-          disabled={!!pendingModel}
-        >
-          <MenuItemRadioGroup
-            label={groupLabel}
-            items={itemIds}
-            itemToString={itemToString}
-            selectedItem={current}
-            onChange={(id) => handleSelect(id as string)}
-          />
+        <MenuButton label={triggerLabel} kind="ghost" size="sm" menuAlignment="top-end" disabled={!!pending}>
+          {sections.map((s) => (
+            <MenuItemRadioGroup
+              key={s.url}
+              label={s.label}
+              items={s.itemIds}
+              itemToString={s.itemToString}
+              selectedItem={s.selectedItem}
+              onChange={(id) => handleSelect(s.url, id as string)}
+            />
+          ))}
         </MenuButton>
-        {pendingModel ? <InlineLoading className={styles.loading} description="" /> : null}
+        {pending ? <InlineLoading className={styles.loading} description="" /> : null}
       </div>
       {switchError ? (
         <InlineNotification
