@@ -78,7 +78,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, [isOpen]);
 
-  const current = data?.current ?? null;
+  const current = data?.current;
 
   const handleSelect = useCallback(
     async (url: string, modelId: string) => {
