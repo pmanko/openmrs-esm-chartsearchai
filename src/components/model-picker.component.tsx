@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { InlineLoading, InlineNotification, MenuButton, MenuItemRadioGroup } from '@carbon/react';
+import {
+  InlineLoading,
+  InlineNotification,
+  MenuButton,
+  MenuItem,
+  MenuItemDivider,
+  MenuItemRadioGroup,
+} from '@carbon/react';
 import { useConfig } from '@openmrs/esm-framework';
 import { type ChartSearchAiConfig } from '../config-schema';
 import { fetchEndpoints, setEndpointModel, type EndpointListResponse } from '../api/chartsearchai';
@@ -152,15 +159,20 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     <div className={styles.root}>
       <div className={styles.triggerRow}>
         <MenuButton label={triggerLabel} kind="ghost" size="sm" menuAlignment="top-end" disabled={!!pending}>
-          {sections.map((s) => (
-            <MenuItemRadioGroup
-              key={s.url}
-              label={s.label}
-              items={s.itemIds}
-              itemToString={s.itemToString}
-              selectedItem={s.selectedItem}
-              onChange={(id) => handleSelect(s.url, id as string)}
-            />
+          {sections.map((s, i) => (
+            <React.Fragment key={s.url}>
+              {i > 0 ? <MenuItemDivider /> : null}
+              {/* Carbon group labels are aria-only; a disabled MenuItem gives a
+                  VISIBLE section header above the endpoint's models. */}
+              <MenuItem label={s.label} disabled className={styles.sectionHeader} />
+              <MenuItemRadioGroup
+                label={s.label}
+                items={s.itemIds}
+                itemToString={s.itemToString}
+                selectedItem={s.selectedItem}
+                onChange={(id) => handleSelect(s.url, id as string)}
+              />
+            </React.Fragment>
           ))}
         </MenuButton>
         {pending ? <InlineLoading className={styles.loading} description="" /> : null}

@@ -101,10 +101,14 @@ describe('ModelPicker visibility gates', () => {
 });
 
 describe('ModelPicker endpoint sections', () => {
-  it('renders one accessible group per endpoint (LM Studio + Med Agent Hub)', async () => {
+  it('renders a VISIBLE section header + an accessible group per endpoint', async () => {
     mockFetch.mockResolvedValue(TWO_SECTIONS);
     render(<ModelPicker />);
     await openMenu(/Gemma 4 e2b/i);
+    // Visible headers (disabled MenuItem, role=menuitem) — the thing the user sees.
+    expect(screen.getByRole('menuitem', { name: /LM Studio/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Med Agent Hub/i })).toBeInTheDocument();
+    // ...plus the accessible radio groups grouping each endpoint's models.
     expect(screen.getByRole('group', { name: /LM Studio/i })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: /Med Agent Hub/i })).toBeInTheDocument();
   });
