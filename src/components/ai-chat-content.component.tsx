@@ -1,8 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConfig, usePatient } from '@openmrs/esm-framework';
-import { Close, Microphone, MicrophoneFilled, Renew, Send, StopFilled } from '@carbon/react/icons';
-import { InlineLoading } from '@carbon/react';
+import {
+  Add,
+  Close,
+  Maximize,
+  Microphone,
+  MicrophoneFilled,
+  Minimize,
+  Renew,
+  Send,
+  StopFilled,
+} from '@carbon/react/icons';
+import { Button, IconButton, InlineLoading, InlineNotification } from '@carbon/react';
 import { useChartSearchAi } from '../hooks/useChartSearchAi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { type ChartSearchAiConfig } from '../config-schema';
@@ -14,9 +24,19 @@ interface AiChatContentProps {
   mode: 'floating' | 'workspace';
   onClose?: () => void;
   patientUuid?: string;
+  /** Floating mode only: whether the panel is maximized to full screen. */
+  isExpanded?: boolean;
+  /** Floating mode only: toggle the maximized state. When omitted, the maximize control is hidden. */
+  onToggleExpand?: () => void;
 }
 
-const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUuid: patientUuidProp }) => {
+const AiChatContent: React.FC<AiChatContentProps> = ({
+  mode,
+  onClose,
+  patientUuid: patientUuidProp,
+  isExpanded = false,
+  onToggleExpand,
+}) => {
   const { t } = useTranslation();
   const config = useConfig<ChartSearchAiConfig>();
   const { patient, isLoading: isPatientLoading } = usePatient();
@@ -27,7 +47,11 @@ const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUui
   const rootRef = useRef<HTMLDivElement>(null);
   const historyAreaRef = useRef<HTMLDivElement>(null);
 
-  const { messages, isAnyLoading, submitQuestion, stopCurrent, startNewChatSession } = useChartSearchAi(patientUuid);
+  const { messages, isAnyLoading, submitQuestion, stopCurrent, startNewChatSession, refreshClinicalContext } =
+    useChartSearchAi(patientUuid);
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const questionRef = useRef(question);
   questionRef.current = question;
@@ -149,14 +173,34 @@ const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUui
   const handleNewChat = useCallback(() => {
     if (!patientUuid) return;
     startNewChatSession(patientUuid);
+    setRefreshNotice(null);
     setQuestion('');
     inputRef.current?.focus();
   }, [patientUuid, startNewChatSession]);
 
+  const handleRefreshContext = useCallback(async () => {
+    if (!patientUuid || isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshNotice(null);
+    try {
+      await refreshClinicalContext(patientUuid);
+      setRefreshNotice({ kind: 'success', text: t('clinicalContextRefreshed', 'Clinical context refreshed') });
+    } catch {
+      setRefreshNotice({
+        kind: 'error',
+        text: t('clinicalContextRefreshFailed', 'Could not refresh clinical context'),
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [patientUuid, isRefreshing, refreshClinicalContext, t]);
+
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
-      className={`${styles.chatRoot} ${mode === 'floating' ? styles.chatRootFloating : styles.chatRootWorkspace}`}
+      className={`${styles.chatRoot} ${mode === 'floating' ? styles.chatRootFloating : styles.chatRootWorkspace} ${
+        mode === 'floating' && isExpanded ? styles.chatRootFloatingExpanded : ''
+      }`}
       ref={rootRef}
       role={mode === 'floating' ? 'dialog' : undefined}
       aria-label={mode === 'floating' ? t('aiChartSearch', 'AI Chart Search') : undefined}
@@ -169,35 +213,57 @@ const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUui
             {t('aiChartSearch', 'AI Chart Search')}
           </span>
           <span className={styles.panelHeaderActions}>
-            {messages.length > 0 && (
-              <button
-                className={styles.closeButton}
-                onClick={handleNewChat}
-                aria-label={t('newChat', 'New chat')}
-                title={t('newChat', 'New chat')}
-                type="button"
+            <IconButton
+              kind="ghost"
+              size="sm"
+              align="bottom"
+              label={t('refreshClinicalContext', 'Refresh clinical context')}
+              onClick={handleRefreshContext}
+              disabled={!patientUuid || isRefreshing}
+            >
+              <Renew size={16} />
+            </IconButton>
+            <IconButton
+              kind="ghost"
+              size="sm"
+              align="bottom"
+              label={t('newChat', 'New chat')}
+              onClick={handleNewChat}
+              disabled={!patientUuid}
+            >
+              <Add size={16} />
+            </IconButton>
+            {onToggleExpand && (
+              <IconButton
+                kind="ghost"
+                size="sm"
+                align="bottom"
+                label={isExpanded ? t('restore', 'Restore') : t('maximize', 'Maximize')}
+                onClick={onToggleExpand}
               >
-                <Renew size={16} />
-              </button>
+                {isExpanded ? <Minimize size={16} /> : <Maximize size={16} />}
+              </IconButton>
             )}
-            <button className={styles.closeButton} onClick={onClose} aria-label={t('close', 'Close')} type="button">
+            <IconButton kind="ghost" size="sm" align="bottom-end" label={t('close', 'Close')} onClick={onClose}>
               <Close size={16} />
-            </button>
+            </IconButton>
           </span>
         </div>
       )}
-      {mode === 'workspace' && messages.length > 0 && (
+      {mode === 'workspace' && (
         <div className={styles.workspaceActions}>
-          <button
-            className={styles.closeButton}
-            onClick={handleNewChat}
-            aria-label={t('newChat', 'New chat')}
-            title={t('newChat', 'New chat')}
-            type="button"
+          <Button
+            kind="ghost"
+            size="sm"
+            renderIcon={Renew}
+            onClick={handleRefreshContext}
+            disabled={!patientUuid || isRefreshing}
           >
-            <Renew size={16} />
-            <span className={styles.newChatLabel}>{t('newChat', 'New chat')}</span>
-          </button>
+            {t('refreshClinicalContext', 'Refresh clinical context')}
+          </Button>
+          <Button kind="ghost" size="sm" renderIcon={Add} onClick={handleNewChat} disabled={!patientUuid}>
+            {t('newChat', 'New chat')}
+          </Button>
         </div>
       )}
 
@@ -245,6 +311,16 @@ const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUui
             ? t('microphonePermissionDenied', 'Microphone access was denied. Please allow microphone permissions.')
             : t('speechRecognitionError', 'Speech recognition failed. Please try again.')}
         </p>
+      )}
+
+      {refreshNotice && (
+        <InlineNotification
+          className={styles.refreshNotice}
+          kind={refreshNotice.kind}
+          lowContrast
+          title={refreshNotice.text}
+          onCloseButtonClick={() => setRefreshNotice(null)}
+        />
       )}
 
       <div className={styles.modelPickerRow}>
