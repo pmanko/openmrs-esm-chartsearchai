@@ -183,8 +183,10 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
     setIsRefreshing(true);
     setRefreshNotice(null);
     try {
+      // On success the hook drops an in-thread system notice into the
+      // conversation flow, so we don't raise the banner here. The banner is
+      // reserved for the error case (a failed refresh has no in-thread row).
       await refreshClinicalContext(patientUuid);
-      setRefreshNotice({ kind: 'success', text: t('clinicalContextRefreshed', 'Clinical context refreshed') });
     } catch {
       setRefreshNotice({
         kind: 'error',
@@ -276,24 +278,33 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
           <p className={styles.infoText}>{t('noPatientSelected', 'No patient selected')}</p>
         )}
 
-        {messages.map((msg) => (
-          <div key={msg.id} className={styles.messagePair}>
-            <div className={styles.questionBubble}>{msg.question}</div>
-            <div className={styles.answerBubble}>
-              <AiResponsePanel
-                answer={msg.answer}
-                references={msg.references}
-                blocks={msg.blocks}
-                questionId={msg.questionId}
-                error={msg.error}
-                isLoading={msg.isLoading}
-                patientUuid={patientUuid ?? ''}
-                onFeedbackComplete={handleFeedbackComplete}
-              />
-              {msg.isLoading && !msg.answer && <InlineLoading description={t('thinkingEllipsis', 'Thinking...')} />}
+        {messages.map((msg) =>
+          msg.kind === 'system' ? (
+            // In-thread system notice (e.g. context refreshed) — a subtle
+            // inline divider in the conversation flow, not a Q+A bubble.
+            <div key={msg.id} className={styles.systemNotice} role="status">
+              <span className={styles.systemNoticeText}>{msg.answer}</span>
             </div>
-          </div>
-        ))}
+          ) : (
+            <div key={msg.id} className={styles.messagePair}>
+              <div className={styles.questionBubble}>{msg.question}</div>
+              <div className={styles.answerBubble}>
+                <AiResponsePanel
+                  answer={msg.answer}
+                  references={msg.references}
+                  blocks={msg.blocks}
+                  questionId={msg.questionId}
+                  error={msg.error}
+                  isLoading={msg.isLoading}
+                  resolvedModel={msg.resolvedModel}
+                  patientUuid={patientUuid ?? ''}
+                  onFeedbackComplete={handleFeedbackComplete}
+                />
+                {msg.isLoading && !msg.answer && <InlineLoading description={t('thinkingEllipsis', 'Thinking...')} />}
+              </div>
+            </div>
+          ),
+        )}
       </div>
 
       {hasCompletedAnswer && (

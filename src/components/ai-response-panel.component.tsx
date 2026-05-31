@@ -16,6 +16,8 @@ interface AiResponsePanelProps {
   error: string | null;
   isLoading: boolean;
   patientUuid: string;
+  /** The backend model that produced this answer; shown as a subtle faded tag. */
+  resolvedModel?: string;
   onFeedbackComplete?: () => void;
 }
 
@@ -31,6 +33,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   error,
   isLoading,
   patientUuid,
+  resolvedModel,
   onFeedbackComplete,
 }) => {
   const { t } = useTranslation();
@@ -104,11 +107,18 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
 
       {answer && !isLoading && (
         <div className={styles.actionsRow}>
-          {questionId ? (
-            <AiFeedback key={questionId} questionId={questionId} onComplete={onFeedbackComplete} />
-          ) : (
-            <span />
-          )}
+          <div className={styles.actionsLeft}>
+            {questionId ? (
+              <AiFeedback key={questionId} questionId={questionId} onComplete={onFeedbackComplete} />
+            ) : (
+              <span />
+            )}
+            {resolvedModel && (
+              <span className={styles.modelTag} title={t('answeredByModel', 'Answered by {{model}}', { model: resolvedModel })}>
+                {resolvedModel}
+              </span>
+            )}
+          </div>
           <IconButton kind="ghost" size="sm" label={t('copy', 'Copy')} align="left-bottom" onClick={handleCopy}>
             <Copy />
           </IconButton>

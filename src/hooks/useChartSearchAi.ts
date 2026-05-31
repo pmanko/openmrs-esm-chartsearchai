@@ -21,6 +21,18 @@ export interface ChatMessage {
   questionId: string;
   isLoading: boolean;
   error: string | null;
+  /**
+   * The backend model that produced this answer (the per-request override the
+   * picker selected, or the config default). Surfaced as a subtle per-response
+   * tag. Undefined for older rows / system notices.
+   */
+  resolvedModel?: string;
+  /**
+   * A `'system'` message is an in-thread notice (e.g. "clinical context
+   * refreshed") rather than a Q+A turn. Such rows carry only `answer` text and
+   * are rendered as a subtle inline divider, not a chat bubble.
+   */
+  kind?: 'system';
 }
 
 interface UseChartSearchAiReturn {
@@ -205,9 +217,23 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
     // Keeps the transcript; the server rebuilds the chart snapshot for the
     // existing session. Update the (unchanged) session uuid defensively.
     const response = await refreshChartSnapshot(patientUuid);
-    if (isMountedRef.current && response?.session) {
+    if (!isMountedRef.current) return;
+    if (response?.session) {
       setSessionUuid(patientUuid, response.session);
     }
+    // Drop an in-thread system notice so the refresh is visible in the
+    // conversation flow (rendered as a subtle inline divider, not a bubble).
+    const notice: ChatMessage = {
+      id: generateId(),
+      question: '',
+      answer: 'Clinical context refreshed — the latest chart data is now available to the assistant.',
+      references: [],
+      questionId: '',
+      isLoading: false,
+      error: null,
+      kind: 'system',
+    };
+    updateMessages(patientUuid, (prev) => [...prev, notice]);
   }, []);
 
   const submitQuestion = useCallback(
@@ -249,6 +275,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             references: response.references,
             blocks: response.blocks,
             questionId: response.messageId ?? response.questionId ?? '',
+            resolvedModel: response.resolvedModel,
             isLoading: false,
           };
           return updated;
@@ -280,6 +307,9 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       };
 
       const sessionUuid = sessionUuidByPatient[patientUuid] ?? null;
+      // The picker's per-session selection (null = config default). Read at
+      // submit time so the most recent pick applies to this request only.
+      const selectedBackend = chatSessionStore.getState().selectedBackend;
 
       try {
         // Multi-turn streaming: chat history is reconstructed server-side
@@ -306,6 +336,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             onError: fail,
           },
           abortController,
+          selectedBackend,
         );
       } catch (err) {
         abortControllerRef.current = null;

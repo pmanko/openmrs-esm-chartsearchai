@@ -2,25 +2,26 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ModelPicker from './model-picker.component';
-import { fetchEndpoints, setEndpointModel } from '../api/chartsearchai';
+import { fetchEndpoints } from '../api/chartsearchai';
+import { chatSessionStore } from '../store/chat-session.store';
 import { useConfig } from '@openmrs/esm-framework';
 
-vi.mock('@openmrs/esm-framework', () => ({
-  useConfig: vi.fn(() => ({ showModelPicker: true })),
-}));
+// NB: do NOT vi.mock('@openmrs/esm-framework') here — the picker now reads the
+// shared chatSessionStore via useStore, and the store module itself depends on
+// createGlobalStore/getSessionStore. The vitest config already aliases the whole
+// framework to its mock (real useStore/createGlobalStore, jest.fn useConfig), so
+// we only stub the api layer and drive useConfig through its mock return value.
 vi.mock('../api/chartsearchai', () => ({
   fetchEndpoints: vi.fn(),
-  setEndpointModel: vi.fn(),
 }));
 
 const mockFetch = fetchEndpoints as Mock;
-const mockSet = setEndpointModel as Mock;
 const mockUseConfig = useConfig as unknown as Mock;
 
 const LM = 'http://lm/v1/chat/completions';
 const HUB = 'http://hub/v1/chat/completions';
 
-// LM Studio (current) with two models + Med Agent Hub with the single team choice.
+// LM Studio (the config default) with two models + Med Agent Hub with the single team choice.
 const TWO_SECTIONS = {
   endpoints: [
     {
@@ -43,6 +44,7 @@ const TWO_SECTIONS = {
       models: [{ id: 'med-agent-team', displayName: 'Med Agent Team', loaded: false }],
     },
   ],
+  // The config-controlled global default — gets the faded "(default)" tag.
   current: { endpointUrl: LM, modelName: 'gemma-4-e2b-it' },
 };
 
@@ -58,6 +60,8 @@ const openMenu = async (triggerNeedle: RegExp) => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseConfig.mockReturnValue({ showModelPicker: true });
+  // Real store; reset to a clean slate (no per-session selection) each test.
+  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedBackend: null });
   mockFetch.mockReturnValue(new Promise(() => {})); // hang by default
 });
 
@@ -122,12 +126,21 @@ describe('ModelPicker endpoint sections', () => {
     expect(screen.getByRole('menuitemradio', { name: /Med Agent Team/i })).toBeInTheDocument();
   });
 
-  it('checks the current endpoint+model option', async () => {
+  it('falls back to the config default selection when nothing is picked yet', async () => {
     mockFetch.mockResolvedValue(TWO_SECTIONS);
     render(<ModelPicker />);
     await openMenu(/Gemma 4 e2b/i);
     const checked = screen.getByRole('menuitemradio', { checked: true });
     expect(checked).toHaveTextContent('Gemma 4 e2b');
+  });
+
+  it('marks the config default with a faded "(default)" tag, and only that one', async () => {
+    mockFetch.mockResolvedValue(TWO_SECTIONS);
+    render(<ModelPicker />);
+    await openMenu(/Gemma 4 e2b/i);
+    expect(screen.getByRole('menuitemradio', { name: /Gemma 4 e2b/i })).toHaveTextContent(/default/i);
+    expect(screen.getByRole('menuitemradio', { name: /MedGemma/i })).not.toHaveTextContent(/default/i);
+    expect(screen.getByRole('menuitemradio', { name: /Med Agent Team/i })).not.toHaveTextContent(/default/i);
   });
 
   it('shows "(not loaded)" only for an LM Studio model, not the generic team', async () => {
@@ -147,35 +160,29 @@ describe('ModelPicker endpoint sections', () => {
     expect(document.body.contains(menu)).toBe(true);
   });
 
-  it('switching: selecting the team calls setEndpointModel(hubUrl, "med-agent-team")', async () => {
+  it('selecting a model writes the per-session selectedBackend (no global default mutation)', async () => {
     mockFetch.mockResolvedValue(TWO_SECTIONS);
-    mockSet.mockResolvedValueOnce({ endpointUrl: HUB, current: 'med-agent-team' });
     const onSwitched = vi.fn();
     render(<ModelPicker onSwitched={onSwitched} />);
     await openMenu(/Gemma 4 e2b/i);
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Med Agent Team/i }));
-    await waitFor(() => expect(mockSet).toHaveBeenCalledWith(HUB, 'med-agent-team'));
+
+    // The selection is held client-side as a per-request override...
+    await waitFor(() =>
+      expect(chatSessionStore.getState().selectedBackend).toEqual({ endpointUrl: HUB, modelName: 'med-agent-team' }),
+    );
     expect(onSwitched).toHaveBeenCalledWith('med-agent-team');
+    // ...and the trigger reflects the new effective backend.
+    expect(await screen.findByRole('button', { name: /Med Agent Team/i })).toBeInTheDocument();
   });
 
-  it('does NOT switch when the user picks the already-current model', async () => {
+  it('selecting the config default model records it as the per-session selection', async () => {
     mockFetch.mockResolvedValue(TWO_SECTIONS);
     render(<ModelPicker />);
     await openMenu(/Gemma 4 e2b/i);
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Gemma 4 e2b/i }));
-    expect(mockSet).not.toHaveBeenCalled();
-  });
-
-  it('surfaces the backend reason when a switch fails', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
-    mockSet.mockRejectedValueOnce(
-      Object.assign(new Error('Server responded with 400'), {
-        responseBody: { error: "Model 'x' is not served by endpoint 'y'." },
-      }),
+    await waitFor(() =>
+      expect(chatSessionStore.getState().selectedBackend).toEqual({ endpointUrl: LM, modelName: 'gemma-4-e2b-it' }),
     );
-    render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Med Agent Team/i }));
-    await waitFor(() => expect(screen.getByText(/not served by endpoint/i)).toBeInTheDocument());
   });
 });

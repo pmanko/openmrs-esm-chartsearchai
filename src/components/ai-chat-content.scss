@@ -137,6 +137,29 @@
   max-width: 95%;
 }
 
+// In-thread system notice (e.g. "clinical context refreshed"): a centered,
+// faded divider in the conversation flow — distinct from the Q+A bubbles.
+.systemNotice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid colors.$gray-20;
+  }
+}
+
+.systemNoticeText {
+  @include type.type-style('label-01');
+  color: colors.$gray-50;
+  font-style: italic;
+  padding: 0 layout.$spacing-03;
+}
+
 .modelPickerRow {
   display: flex;
   justify-content: flex-end;

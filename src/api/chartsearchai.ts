@@ -37,6 +37,9 @@ export interface AiSearchResponse {
   session?: string;
   /** Server-assigned uuid for the assistant message row. Present on chat responses only. */
   messageId?: string;
+  /** The backend model that produced this answer (the per-request override or the
+   * config default), for the subtle per-response model tag. */
+  resolvedModel?: string;
 }
 
 export interface ChatHistoryMessage {
@@ -194,8 +197,9 @@ export function searchPatientChartStream(
         } else if (eventType === 'done') {
           streamFinalized = true;
           try {
-            const parsed: AiSearchResponse = JSON.parse(data);
-            callbacks.onDone(parsed);
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            // The backend sends the resolved model as `model`; surface it as resolvedModel.
+            callbacks.onDone({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
           } catch {
             callbacks.onError('Failed to parse final response');
           }
@@ -278,11 +282,18 @@ export function chatPatientChartStream(
     onError: (error: string) => void;
   },
   abortController?: AbortController,
+  backend?: { endpointUrl: string; modelName: string } | null,
 ): void {
   const url = `${window.openmrsBase}${BASE_PATH}/chat/stream`;
   const body: Record<string, string> = { patient: patientUuid, question };
   if (sessionUuid) {
     body.session = sessionUuid;
+  }
+  // Per-request backend override (the picker's selection). When absent the server
+  // uses its config-controlled global default; this never mutates that default.
+  if (backend) {
+    body.endpointUrl = backend.endpointUrl;
+    body.modelName = backend.modelName;
   }
 
   window
@@ -351,8 +362,9 @@ export function chatPatientChartStream(
         } else if (eventType === 'done') {
           streamFinalized = true;
           try {
-            const parsed: AiSearchResponse = JSON.parse(data);
-            callbacks.onDone(parsed);
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            // The backend sends the resolved model as `model`; surface it as resolvedModel.
+            callbacks.onDone({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
           } catch {
             callbacks.onError('Failed to parse final response');
           }

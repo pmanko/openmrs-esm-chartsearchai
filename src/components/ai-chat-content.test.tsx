@@ -194,14 +194,43 @@ describe('AiChatContent', () => {
       expect(mockStartNewChatSession).toHaveBeenCalledWith('p1');
     });
 
-    it('renders the Refresh clinical context button and refreshes + confirms on click', async () => {
+    it('renders the Refresh clinical context button and refreshes on click', async () => {
       const user = userEvent.setup();
       render(<AiChatContent mode="floating" patientUuid="p1" onClose={vi.fn()} />);
       const refresh = screen.getByRole('button', { name: /refresh clinical context/i });
       await user.click(refresh);
+      // Success feedback is an in-thread system notice the hook appends (see the
+      // hook test); the component raises a banner only on failure. So on success
+      // we assert the refresh fired but NO error banner is shown.
       expect(mockRefreshClinicalContext).toHaveBeenCalledWith('p1');
-      // Non-destructive success feedback, not a transcript wipe.
-      expect(await screen.findByText(/clinical context refreshed/i)).toBeInTheDocument();
+      expect(screen.queryByText(/could not refresh clinical context/i)).not.toBeInTheDocument();
+    });
+
+    it('renders an in-thread system notice (not a chat bubble) for a system message', () => {
+      mockUseChartSearchAi.mockReturnValue({
+        messages: [
+          {
+            id: 'sys-1',
+            question: '',
+            answer: 'Clinical context refreshed — the latest chart data is now available to the assistant.',
+            references: [],
+            questionId: '',
+            isLoading: false,
+            error: null,
+            kind: 'system',
+          },
+        ],
+        isAnyLoading: false,
+        submitQuestion: mockSubmitQuestion,
+        stopCurrent: mockStopCurrent,
+        clearMessages: vi.fn(),
+        startNewChatSession: mockStartNewChatSession,
+        refreshClinicalContext: mockRefreshClinicalContext,
+      });
+      render(<AiChatContent mode="workspace" patientUuid="p1" />);
+      expect(screen.getByRole('status')).toHaveTextContent(/clinical context refreshed/i);
+      // A system notice is not a Q+A turn, so it must not mount an answer panel.
+      expect(screen.queryByTestId('ai-response')).not.toBeInTheDocument();
     });
 
     it('surfaces an error notice when the refresh fails', async () => {

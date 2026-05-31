@@ -28,6 +28,24 @@
   margin-top: layout.$spacing-02;
 }
 
+.actionsLeft {
+  display: flex;
+  align-items: center;
+  gap: layout.$spacing-03;
+  min-width: 0;
+}
+
+// Subtle faded tag naming the backend model that produced this answer.
+.modelTag {
+  @include type.type-style('label-01');
+  color: colors.$gray-50;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 16rem;
+}
+
 .streamingIndicator {
   display: inline-flex;
   margin-left: layout.$spacing-02;

@@ -1,7 +1,12 @@
 import { TextEncoder, TextDecoder } from 'util';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 import { openmrsFetch } from '@openmrs/esm-framework';
-import { searchPatientChart, searchPatientChartStream, type AiSearchResponse } from './chartsearchai';
+import {
+  chatPatientChartStream,
+  searchPatientChart,
+  searchPatientChartStream,
+  type AiSearchResponse,
+} from './chartsearchai';
 
 // Polyfill for jsdom
 (globalThis as unknown as Record<string, unknown>).TextEncoder = TextEncoder;
@@ -354,6 +359,78 @@ describe('searchPatientChartStream', () => {
       answer: 'a',
       references: [],
     });
+    expect(cb.onError).not.toHaveBeenCalled();
+  });
+});
+
+// ── chatPatientChartStream (SSE, per-request backend override) ─────────
+
+describe('chatPatientChartStream', () => {
+  let fetchSpy: MockInstance;
+
+  afterEach(() => {
+    fetchSpy?.mockRestore();
+  });
+
+  function makeCallbacks() {
+    return {
+      onSession: vi.fn(),
+      onToken: vi.fn(),
+      onDone: vi.fn(),
+      onError: vi.fn(),
+    };
+  }
+
+  function sentBody(): Record<string, unknown> {
+    return JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+  }
+
+  it('includes the per-request backend override in the POST body when a backend is given', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(mockStreamResponse(['event:done\ndata: {"answer":"ok","references":[]}\n\n']));
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, {
+      endpointUrl: 'http://hub/v1/chat/completions',
+      modelName: 'med-agent-team',
+    });
+    await flushPromises();
+
+    expect(sentBody()).toMatchObject({
+      patient: 'uuid-1',
+      question: 'q?',
+      endpointUrl: 'http://hub/v1/chat/completions',
+      modelName: 'med-agent-team',
+    });
+  });
+
+  it('omits the override fields when no backend is selected (server uses its config default)', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(mockStreamResponse(['event:done\ndata: {"answer":"ok","references":[]}\n\n']));
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb);
+    await flushPromises();
+
+    const body = sentBody();
+    expect(body).not.toHaveProperty('endpointUrl');
+    expect(body).not.toHaveProperty('modelName');
+  });
+
+  it('maps the done event\'s `model` field onto resolvedModel', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse(['event:done\ndata: {"answer":"ok","references":[],"model":"med-agent-team"}\n\n']),
+      );
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb);
+    await flushPromises();
+
+    expect(cb.onDone).toHaveBeenCalledWith(expect.objectContaining({ resolvedModel: 'med-agent-team' }));
     expect(cb.onError).not.toHaveBeenCalled();
   });
 });

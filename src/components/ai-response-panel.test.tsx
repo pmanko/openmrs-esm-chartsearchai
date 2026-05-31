@@ -321,3 +321,52 @@ describe('AiResponsePanel copy-to-clipboard', () => {
     expect(writeText).toHaveBeenCalledWith('Findings are notable.');
   });
 });
+
+describe('AiResponsePanel model tag', () => {
+  it('renders a subtle tag with the resolved model once the answer is complete', () => {
+    render(
+      <AiResponsePanel
+        answer="Done."
+        references={[]}
+        questionId="q1"
+        error={null}
+        isLoading={false}
+        patientUuid={patientUuid}
+        resolvedModel="med-agent-team"
+      />,
+    );
+
+    expect(screen.getByText('med-agent-team')).toBeInTheDocument();
+  });
+
+  it('does not render the model tag while the answer is still streaming', () => {
+    render(
+      <AiResponsePanel
+        answer="Partial"
+        references={[]}
+        questionId="q1"
+        error={null}
+        isLoading={true}
+        patientUuid={patientUuid}
+        resolvedModel="med-agent-team"
+      />,
+    );
+
+    expect(screen.queryByText('med-agent-team')).not.toBeInTheDocument();
+  });
+
+  it('omits the model tag when no resolved model is provided', () => {
+    render(
+      <AiResponsePanel
+        answer="Done."
+        references={[]}
+        questionId="q1"
+        error={null}
+        isLoading={false}
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.queryByText('med-agent-team')).not.toBeInTheDocument();
+  });
+});

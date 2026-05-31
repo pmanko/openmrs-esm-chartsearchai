@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useConfig } from '@openmrs/esm-framework';
 import { useChartSearchAi } from './useChartSearchAi';
-import { chatPatientChartStream, fetchChatHistory, startNewChat } from '../api/chartsearchai';
+import { chatPatientChartStream, fetchChatHistory, refreshChartSnapshot, startNewChat } from '../api/chartsearchai';
 import { chatSessionStore } from '../store/chat-session.store';
 
 const mockUseConfig = useConfig as Mock;
@@ -10,17 +10,19 @@ const mockUseConfig = useConfig as Mock;
 vi.mock('../api/chartsearchai', () => ({
   chatPatientChartStream: vi.fn(),
   fetchChatHistory: vi.fn(),
+  refreshChartSnapshot: vi.fn(),
   startNewChat: vi.fn(),
 }));
 
 const mockChatStream = chatPatientChartStream as Mock;
 const mockFetchHistory = fetchChatHistory as Mock;
+const mockRefreshSnapshot = refreshChartSnapshot as Mock;
 const mockStartNewChat = startNewChat as Mock;
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseConfig.mockReturnValue({ useStreaming: true });
-  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {} });
+  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedBackend: null });
   // Default: empty hydration so tests opt-in to populated history.
   mockFetchHistory.mockResolvedValue({ session: 'srv-session-default', messages: [] });
 });
@@ -77,6 +79,8 @@ describe('useChartSearchAi', () => {
         onError: expect.any(Function),
       }),
       expect.any(AbortController),
+      // No per-session pick → null backend → server uses its config default.
+      null,
     );
   });
 
@@ -106,6 +110,7 @@ describe('useChartSearchAi', () => {
       'Q2',
       expect.any(Object),
       expect.any(AbortController),
+      null,
     );
   });
 
@@ -372,5 +377,78 @@ describe('useChartSearchAi', () => {
 
     unmount();
     expect(abortController.signal.aborted).toBe(true);
+  });
+
+  it('records the resolved model from the streaming done event onto the message', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Summary?');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      callbacks.onDone({
+        answer: 'Done.',
+        references: [],
+        session: 's',
+        messageId: 'm-1',
+        resolvedModel: 'med-agent-team',
+      });
+    });
+
+    expect(result.current.messages[0].resolvedModel).toBe('med-agent-team');
+  });
+
+  it('passes the picker selection as the per-request backend override', async () => {
+    mockChatStream.mockImplementation(() => {});
+    chatSessionStore.setState({ selectedBackend: { endpointUrl: 'http://hub/v1', modelName: 'med-agent-team' } });
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What meds?');
+    });
+
+    expect(mockChatStream).toHaveBeenLastCalledWith(
+      'patient-uuid',
+      expect.anything(),
+      'What meds?',
+      expect.any(Object),
+      expect.any(AbortController),
+      { endpointUrl: 'http://hub/v1', modelName: 'med-agent-team' },
+    );
+  });
+
+  it('refreshClinicalContext appends an in-thread system notice on success', async () => {
+    mockRefreshSnapshot.mockResolvedValue({ session: 'srv-session-1' });
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    await act(async () => {
+      await result.current.refreshClinicalContext('patient-uuid');
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    const notice = result.current.messages[0];
+    expect(notice.kind).toBe('system');
+    expect(notice.answer).toMatch(/clinical context refreshed/i);
+    expect(notice.isLoading).toBe(false);
+  });
+
+  it('refreshClinicalContext rejects without dropping a notice when the refresh fails', async () => {
+    mockRefreshSnapshot.mockRejectedValueOnce(new Error('boom'));
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    await expect(
+      act(async () => {
+        await result.current.refreshClinicalContext('patient-uuid');
+      }),
+    ).rejects.toThrow('boom');
+
+    expect(result.current.messages).toHaveLength(0);
   });
 });
