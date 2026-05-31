@@ -114,7 +114,10 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               <span />
             )}
             {resolvedModel && (
-              <span className={styles.modelTag} title={t('answeredByModel', 'Answered by {{model}}', { model: resolvedModel })}>
+              <span
+                className={styles.modelTag}
+                title={t('answeredByModel', 'Answered by {{model}}', { model: resolvedModel })}
+              >
                 {resolvedModel}
               </span>
             )}

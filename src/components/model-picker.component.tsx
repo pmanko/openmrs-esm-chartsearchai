@@ -55,11 +55,16 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   // The config-controlled global default (immutable here — gets the "(default)" tag).
   const defaultBackend = data?.current;
   // What the chat will actually use: the per-session selection, else the default.
-  const effective =
-    selectedBackend ??
-    (defaultBackend && defaultBackend.endpointUrl && defaultBackend.modelName
-      ? { endpointUrl: defaultBackend.endpointUrl, modelName: defaultBackend.modelName }
-      : null);
+  // Memoised so it's referentially stable across renders (it feeds the `sections`
+  // useMemo deps); the whole-store subscription re-renders this on every store change.
+  const effective = useMemo(
+    () =>
+      selectedBackend ??
+      (defaultBackend && defaultBackend.endpointUrl && defaultBackend.modelName
+        ? { endpointUrl: defaultBackend.endpointUrl, modelName: defaultBackend.modelName }
+        : null),
+    [selectedBackend, defaultBackend],
+  );
 
   // Selecting a model writes the per-session selection — it does NOT call the
   // global-switch endpoint, so the config default is never mutated.

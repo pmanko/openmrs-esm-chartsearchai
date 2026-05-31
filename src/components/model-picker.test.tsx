@@ -117,7 +117,7 @@ describe('ModelPicker endpoint sections', () => {
     expect(screen.getByRole('group', { name: /Med Agent Hub/i })).toBeInTheDocument();
   });
 
-  it('lists each endpoint\'s own models as radio options', async () => {
+  it("lists each endpoint's own models as radio options", async () => {
     mockFetch.mockResolvedValue(TWO_SECTIONS);
     render(<ModelPicker />);
     await openMenu(/Gemma 4 e2b/i);

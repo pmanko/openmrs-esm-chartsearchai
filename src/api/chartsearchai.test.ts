@@ -419,7 +419,7 @@ describe('chatPatientChartStream', () => {
     expect(body).not.toHaveProperty('modelName');
   });
 
-  it('maps the done event\'s `model` field onto resolvedModel', async () => {
+  it("maps the done event's `model` field onto resolvedModel", async () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
