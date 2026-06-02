@@ -20,6 +20,41 @@
   margin: 0;
 }
 
+// Rendered-markdown answer (headers / bold / lists) with inline citation chips.
+.markdownAnswer {
+  @include type.type-style('body-01');
+  color: colors.$gray-90;
+  line-height: 1.5;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  ul,
+  ol {
+    margin: layout.$spacing-02 0;
+    padding-left: layout.$spacing-06;
+  }
+
+  li {
+    margin-bottom: layout.$spacing-01;
+  }
+}
+
+.answerParagraph {
+  margin: 0 0 layout.$spacing-03 0;
+}
+
+.answerHeading {
+  @include type.type-style('heading-compact-01');
+  color: colors.$gray-100;
+  margin: layout.$spacing-04 0 layout.$spacing-02 0;
+}
+
 .actionsRow {
   display: flex;
   align-items: center;
