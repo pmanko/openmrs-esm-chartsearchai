@@ -3,9 +3,36 @@ import { useTranslation } from 'react-i18next';
 import { MenuButton, MenuItem, MenuItemDivider, MenuItemRadioGroup } from '@carbon/react';
 import { useConfig, useStore } from '@openmrs/esm-framework';
 import { type ChartSearchAiConfig } from '../config-schema';
-import { fetchEndpoints, type EndpointListResponse } from '../api/chartsearchai';
+import { fetchEndpoints, type EndpointListResponse, type EndpointSection } from '../api/chartsearchai';
 import { chatSessionStore } from '../store/chat-session.store';
 import styles from './model-picker.scss';
+
+/**
+ * Curated picker contents — the published validation arms only, in two plain-language groups.
+ * Models are matched by id (env-agnostic) against whatever endpoint /endpoints reports serving
+ * them, so this works locally and on the cloud regardless of the registered endpoint URLs.
+ * Anything not listed (team-internal component models like qwen/medgemma/gemma-31b, quant
+ * variants, the LM Studio MLX line) is intentionally hidden from the chat picker.
+ */
+const CURATED_GROUPS: Array<{ label: string; items: Array<{ id: string; label: string }> }> = [
+  {
+    label: 'AI Team',
+    items: [
+      { id: 'med-agent-team-high-validated', label: 'High (validated)' },
+      { id: 'med-agent-team-med-validated', label: 'Med (validated)' },
+      { id: 'med-agent-team-low-validated-12b', label: 'Low (validated)' },
+      { id: 'med-agent-team-parity', label: 'Parity' },
+    ],
+  },
+  {
+    label: 'Single models',
+    items: [
+      { id: 'gemma-e4b', label: 'Gemma 4B' },
+      { id: 'gemma-4-12b', label: 'Gemma 12B' },
+      { id: 'gemma-26b', label: 'Gemma 26B' },
+    ],
+  },
+];
 
 interface ModelPickerProps {
   /** Called when the selection changes — lets the parent react if needed. */
@@ -76,38 +103,45 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     [onSwitched],
   );
 
-  // One radio group per reachable endpoint. Memoised so the groups' items /
-  // itemToString stay referentially stable between renders.
+  // One radio group per CURATED category (AI Team / Single models), listing only the
+  // validation-arm models — located by id across whatever endpoints /endpoints reports, so
+  // unlisted team-internal/quant/LM-Studio models never appear. Memoised for referential
+  // stability across renders.
   const sections = useMemo(() => {
-    const endpoints = data?.endpoints ?? [];
-    return endpoints
-      .filter((ep) => ep.reachable && ep.models.length > 0)
-      .map((ep) => {
-        // "(not loaded)" is only meaningful where the backend probes load state.
-        const showLoaded = ep.provider === 'lm-studio';
-        const byId = new Map(ep.models.map((m) => [m.id, m]));
-        return {
-          url: ep.url,
-          label: ep.label,
-          itemIds: ep.models.map((m) => m.id),
-          // Only the effective selection's group carries a checked radio.
-          selectedItem: effective && effective.endpointUrl === ep.url ? effective.modelName : '',
-          itemToString: (item: unknown) => {
-            const id = item as string;
-            const m = byId.get(id);
-            if (!m) return id;
-            let label = m.displayName;
-            if (showLoaded && m.loaded === false) {
-              label = `${label} ${t('notLoaded', '(not loaded)')}`;
-            }
-            // Faded tag on the config-controlled global default.
-            if (defaultBackend && defaultBackend.endpointUrl === ep.url && defaultBackend.modelName === id) {
-              label = `${label} ${t('defaultTag', '(default)')}`;
-            }
-            return label;
-          },
-        };
-      });
+    const endpoints = (data?.endpoints ?? []).filter((ep) => ep.reachable);
+    const locate = (id: string): EndpointSection | undefined =>
+      endpoints.find((ep) => ep.models.some((m) => m.id === id));
+    return CURATED_GROUPS.map((group) => {
+      const found = group.items
+        .map((it) => ({ it, ep: locate(it.id) }))
+        .filter((x): x is { it: { id: string; label: string }; ep: EndpointSection } => Boolean(x.ep));
+      if (found.length === 0) {
+        return null;
+      }
+      const urlById = new Map(found.map((x) => [x.it.id, x.ep.url]));
+      const labelById = new Map(found.map((x) => [x.it.id, x.it.label]));
+      // Only the effective selection's group carries a checked radio.
+      const selectedItem =
+        effective &&
+        found.some((x) => x.ep.url === effective.endpointUrl && x.it.id === effective.modelName)
+          ? effective.modelName
+          : '';
+      return {
+        label: group.label,
+        itemIds: found.map((x) => x.it.id),
+        urlById,
+        selectedItem,
+        itemToString: (item: unknown) => {
+          const id = item as string;
+          let label = labelById.get(id) ?? id;
+          // Faded tag on the config-controlled global default.
+          if (defaultBackend && defaultBackend.endpointUrl === urlById.get(id) && defaultBackend.modelName === id) {
+            label = `${label} ${t('defaultTag', '(default)')}`;
+          }
+          return label;
+        },
+      };
+    }).filter((s): s is NonNullable<typeof s> => s !== null);
   }, [data, effective, defaultBackend, t]);
 
   // Hide conditions — cheapest first.
@@ -128,9 +162,9 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   // Trigger label: "<endpoint> · <model>" for the effective selection.
   let triggerLabel = t('noModel', 'No model');
   if (effective) {
-    const ep = (data.endpoints ?? []).find((e) => e.url === effective.endpointUrl);
-    const m = ep?.models.find((x) => x.id === effective.modelName);
-    triggerLabel = ep && m ? `${ep.label} · ${m.displayName}` : effective.modelName;
+    const group = CURATED_GROUPS.find((g) => g.items.some((it) => it.id === effective.modelName));
+    const item = group?.items.find((it) => it.id === effective.modelName);
+    triggerLabel = group && item ? `${group.label} · ${item.label}` : effective.modelName;
   }
 
   return (
@@ -138,7 +172,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
       <div className={styles.triggerRow}>
         <MenuButton label={triggerLabel} kind="ghost" size="sm" menuAlignment="top-end">
           {sections.map((s, i) => (
-            <React.Fragment key={s.url}>
+            <React.Fragment key={s.label}>
               {i > 0 ? <MenuItemDivider /> : null}
               {/* Carbon group labels are aria-only; a disabled MenuItem gives a
                   VISIBLE section header above the endpoint's models. */}
@@ -148,7 +182,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
                 items={s.itemIds}
                 itemToString={s.itemToString}
                 selectedItem={s.selectedItem}
-                onChange={(id) => handleSelect(s.url, id as string)}
+                onChange={(id) => handleSelect(s.urlById.get(id as string) ?? '', id as string)}
               />
             </React.Fragment>
           ))}

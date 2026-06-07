@@ -19,20 +19,38 @@ const mockFetch = fetchEndpoints as Mock;
 const mockUseConfig = useConfig as unknown as Mock;
 
 const LM = 'http://lm/v1/chat/completions';
+const LLAMA = 'http://llama/v1/chat/completions';
 const HUB = 'http://hub/v1/chat/completions';
 
-// LM Studio (the config default) with two models + Med Agent Hub with the single team choice.
-const TWO_SECTIONS = {
+// A realistic /endpoints payload: LM Studio + llama-server carry team-internal component
+// models (qwen/medgemma/gemma-31b), quant/non-validated variants, and the GGUF single models;
+// Med Agent Hub carries all 9 tiers. The curated picker must surface ONLY the validation arms
+// (4 AI-team + 3 single), located by id across endpoints, and hide everything else.
+const CURATED_DATA = {
   endpoints: [
     {
       label: 'LM Studio',
       url: LM,
       provider: 'lm-studio',
       reachable: true,
-      current: true,
+      current: false,
       models: [
-        { id: 'gemma-4-e2b-it', displayName: 'Gemma 4 e2b', loaded: true },
-        { id: 'medgemma-1.5-4b-it', displayName: 'MedGemma', loaded: false },
+        { id: 'qwen2.5-32b-instruct', displayName: 'Qwen 32B', loaded: true },
+        { id: 'medgemma-27b-text-it-mlx', displayName: 'MedGemma 27B', loaded: true },
+      ],
+    },
+    {
+      label: 'llama-server',
+      url: LLAMA,
+      provider: 'generic-openai-compat',
+      reachable: true,
+      current: false,
+      models: [
+        { id: 'gemma-e4b', displayName: 'gemma-e4b', loaded: true },
+        { id: 'gemma-4-12b', displayName: 'gemma-4-12b', loaded: true },
+        { id: 'gemma-26b', displayName: 'gemma-26b', loaded: true },
+        { id: 'gemma-31b', displayName: 'gemma-31b', loaded: true },
+        { id: 'qwen3.6-35b', displayName: 'qwen3.6-35b', loaded: true },
       ],
     },
     {
@@ -41,11 +59,18 @@ const TWO_SECTIONS = {
       provider: 'generic-openai-compat',
       reachable: true,
       current: false,
-      models: [{ id: 'med-agent-team', displayName: 'Med Agent Team', loaded: false }],
+      models: [
+        { id: 'med-agent-team-high-validated', displayName: 'high-validated', loaded: false },
+        { id: 'med-agent-team-med-validated', displayName: 'med-validated', loaded: false },
+        { id: 'med-agent-team-low-validated-12b', displayName: 'low-validated-12b', loaded: false },
+        { id: 'med-agent-team-parity', displayName: 'parity', loaded: false },
+        { id: 'med-agent-team-low', displayName: 'low', loaded: false },
+        { id: 'med-agent-team-high', displayName: 'high', loaded: false },
+      ],
     },
   ],
   // The config-controlled global default — gets the faded "(default)" tag.
-  current: { endpointUrl: LM, modelName: 'gemma-4-e2b-it' },
+  current: { endpointUrl: HUB, modelName: 'med-agent-team-med-validated' },
 };
 
 // The picker is a Carbon MenuButton: the trigger is labelled "<endpoint> · <model>",
@@ -104,85 +129,88 @@ describe('ModelPicker visibility gates', () => {
   });
 });
 
-describe('ModelPicker endpoint sections', () => {
-  it('renders a VISIBLE section header + an accessible group per endpoint', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
+describe('ModelPicker curated sections', () => {
+  it('renders the two curated group headers (AI Team / Single models), not raw endpoints', async () => {
+    mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
-    // Visible headers (disabled MenuItem, role=menuitem) — the thing the user sees.
-    expect(screen.getByRole('menuitem', { name: /LM Studio/i })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /Med Agent Hub/i })).toBeInTheDocument();
-    // ...plus the accessible radio groups grouping each endpoint's models.
-    expect(screen.getByRole('group', { name: /LM Studio/i })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: /Med Agent Hub/i })).toBeInTheDocument();
+    await openMenu(/Med \(validated\)/i);
+    expect(screen.getByRole('menuitem', { name: /AI Team/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Single models/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /AI Team/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /Single models/i })).toBeInTheDocument();
+    // Raw endpoint labels are no longer used as group headers.
+    expect(screen.queryByRole('menuitem', { name: /^LM Studio$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /llama-server/i })).not.toBeInTheDocument();
   });
 
-  it("lists each endpoint's own models as radio options", async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
+  it('lists exactly the 7 validation arms with human labels', async () => {
+    mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
-    expect(screen.getByRole('menuitemradio', { name: /Gemma 4 e2b/i })).toBeInTheDocument();
-    expect(screen.getByRole('menuitemradio', { name: /MedGemma/i })).toBeInTheDocument();
-    expect(screen.getByRole('menuitemradio', { name: /Med Agent Team/i })).toBeInTheDocument();
+    await openMenu(/Med \(validated\)/i);
+    for (const name of [
+      /High \(validated\)/i,
+      /Med \(validated\)/i,
+      /Low \(validated\)/i,
+      /Parity/i,
+      /Gemma 4B/i,
+      /Gemma 12B/i,
+      /Gemma 26B/i,
+    ]) {
+      expect(screen.getByRole('menuitemradio', { name })).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(7);
   });
 
-  it('falls back to the config default selection when nothing is picked yet', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
+  it('hides team-internal components, non-validated tiers, and the LM Studio line', async () => {
+    mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
+    await openMenu(/Med \(validated\)/i);
+    expect(screen.queryByRole('menuitemradio', { name: /qwen/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: /medgemma/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: /31b/i })).not.toBeInTheDocument();
+  });
+
+  it('checks + tags the config default tier ("Med (validated)"), and only that one', async () => {
+    mockFetch.mockResolvedValue(CURATED_DATA);
+    render(<ModelPicker />);
+    await openMenu(/Med \(validated\)/i);
     const checked = screen.getByRole('menuitemradio', { checked: true });
-    expect(checked).toHaveTextContent('Gemma 4 e2b');
+    expect(checked).toHaveTextContent(/Med \(validated\)/i);
+    expect(checked).toHaveTextContent(/default/i);
+    expect(screen.getByRole('menuitemradio', { name: /High \(validated\)/i })).not.toHaveTextContent(/default/i);
   });
 
-  it('marks the config default with a faded "(default)" tag, and only that one', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
-    render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
-    expect(screen.getByRole('menuitemradio', { name: /Gemma 4 e2b/i })).toHaveTextContent(/default/i);
-    expect(screen.getByRole('menuitemradio', { name: /MedGemma/i })).not.toHaveTextContent(/default/i);
-    expect(screen.getByRole('menuitemradio', { name: /Med Agent Team/i })).not.toHaveTextContent(/default/i);
+  it('selecting an AI-team tier writes the hub url + tier id as the per-session override', async () => {
+    mockFetch.mockResolvedValue(CURATED_DATA);
+    const onSwitched = vi.fn();
+    render(<ModelPicker onSwitched={onSwitched} />);
+    await openMenu(/Med \(validated\)/i);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /High \(validated\)/i }));
+    await waitFor(() =>
+      expect(chatSessionStore.getState().selectedBackend).toEqual({
+        endpointUrl: HUB,
+        modelName: 'med-agent-team-high-validated',
+      }),
+    );
+    expect(onSwitched).toHaveBeenCalledWith('med-agent-team-high-validated');
   });
 
-  it('shows "(not loaded)" only for an LM Studio model, not the generic team', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
+  it('selecting a single model resolves its serving endpoint (llama-server) by id', async () => {
+    mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
-    expect(screen.getByRole('menuitemradio', { name: /MedGemma/i })).toHaveTextContent(/not loaded/i);
-    expect(screen.getByRole('menuitemradio', { name: /Med Agent Team/i })).not.toHaveTextContent(/not loaded/i);
+    await openMenu(/Med \(validated\)/i);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Gemma 12B/i }));
+    await waitFor(() =>
+      expect(chatSessionStore.getState().selectedBackend).toEqual({ endpointUrl: LLAMA, modelName: 'gemma-4-12b' }),
+    );
   });
 
   it('portals the menu outside the picker subtree so the chat panel cannot clip it', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
+    mockFetch.mockResolvedValue(CURATED_DATA);
     const { container } = render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
+    await openMenu(/Med \(validated\)/i);
     const menu = screen.getByRole('menu');
     expect(container.contains(menu)).toBe(false);
     expect(document.body.contains(menu)).toBe(true);
-  });
-
-  it('selecting a model writes the per-session selectedBackend (no global default mutation)', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
-    const onSwitched = vi.fn();
-    render(<ModelPicker onSwitched={onSwitched} />);
-    await openMenu(/Gemma 4 e2b/i);
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Med Agent Team/i }));
-
-    // The selection is held client-side as a per-request override...
-    await waitFor(() =>
-      expect(chatSessionStore.getState().selectedBackend).toEqual({ endpointUrl: HUB, modelName: 'med-agent-team' }),
-    );
-    expect(onSwitched).toHaveBeenCalledWith('med-agent-team');
-    // ...and the trigger reflects the new effective backend.
-    expect(await screen.findByRole('button', { name: /Med Agent Team/i })).toBeInTheDocument();
-  });
-
-  it('selecting the config default model records it as the per-session selection', async () => {
-    mockFetch.mockResolvedValue(TWO_SECTIONS);
-    render(<ModelPicker />);
-    await openMenu(/Gemma 4 e2b/i);
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Gemma 4 e2b/i }));
-    await waitFor(() =>
-      expect(chatSessionStore.getState().selectedBackend).toEqual({ endpointUrl: LM, modelName: 'gemma-4-e2b-it' }),
-    );
   });
 });
