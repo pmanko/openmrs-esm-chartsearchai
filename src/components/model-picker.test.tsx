@@ -46,10 +46,17 @@ const CURATED_DATA = {
       reachable: true,
       current: false,
       models: [
+        { id: 'gemma-e2b', displayName: 'gemma-e2b', loaded: true },
         { id: 'gemma-e4b', displayName: 'gemma-e4b', loaded: true },
         { id: 'gemma-4-12b', displayName: 'gemma-4-12b', loaded: true },
         { id: 'gemma-26b', displayName: 'gemma-26b', loaded: true },
+        { id: 'medgemma-1.5-4b', displayName: 'medgemma-1.5-4b', loaded: true },
+        { id: 'medgemma-27b', displayName: 'medgemma-27b', loaded: true },
+        { id: 'qwen2.5-14b', displayName: 'qwen2.5-14b', loaded: true },
+        { id: 'qwen2.5-32b', displayName: 'qwen2.5-32b', loaded: true },
+        // noise that must stay hidden: team orchestrator, quant variant, non-curated qwen
         { id: 'gemma-31b', displayName: 'gemma-31b', loaded: true },
+        { id: 'gemma-e4b-q8', displayName: 'gemma-e4b-q8', loaded: true },
         { id: 'qwen3.6-35b', displayName: 'qwen3.6-35b', loaded: true },
       ],
     },
@@ -143,7 +150,7 @@ describe('ModelPicker curated sections', () => {
     expect(screen.queryByRole('menuitem', { name: /llama-server/i })).not.toBeInTheDocument();
   });
 
-  it('lists exactly the 7 validation arms with human labels', async () => {
+  it('lists exactly the 12 validation arms with human labels', async () => {
     mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
     await openMenu(/Med \(validated\)/i);
@@ -152,22 +159,28 @@ describe('ModelPicker curated sections', () => {
       /Med \(validated\)/i,
       /Low \(validated\)/i,
       /Parity/i,
+      /Gemma 2B/i,
       /Gemma 4B/i,
       /Gemma 12B/i,
       /Gemma 26B/i,
+      /MedGemma 1\.5 \(4B\)/i,
+      /MedGemma 27B/i,
+      /Qwen 2\.5 14B/i,
+      /Qwen 2\.5 32B/i,
     ]) {
       expect(screen.getByRole('menuitemradio', { name })).toBeInTheDocument();
     }
-    expect(screen.getAllByRole('menuitemradio')).toHaveLength(7);
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(12);
   });
 
-  it('hides team-internal components, non-validated tiers, and the LM Studio line', async () => {
+  it('hides team-internal orchestrators, quant variants, non-curated qwen, and LM Studio', async () => {
     mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
     await openMenu(/Med \(validated\)/i);
-    expect(screen.queryByRole('menuitemradio', { name: /qwen/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('menuitemradio', { name: /medgemma/i })).not.toBeInTheDocument();
+    // distinctive substrings of the noise ids — no curated label contains them
     expect(screen.queryByRole('menuitemradio', { name: /31b/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: /q8/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: /35b/i })).not.toBeInTheDocument();
   });
 
   it('checks + tags the config default tier ("Med (validated)"), and only that one', async () => {

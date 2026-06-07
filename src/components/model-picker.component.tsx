@@ -27,9 +27,14 @@ const CURATED_GROUPS: Array<{ label: string; items: Array<{ id: string; label: s
   {
     label: 'Single models',
     items: [
+      { id: 'gemma-e2b', label: 'Gemma 2B' },
       { id: 'gemma-e4b', label: 'Gemma 4B' },
       { id: 'gemma-4-12b', label: 'Gemma 12B' },
       { id: 'gemma-26b', label: 'Gemma 26B' },
+      { id: 'medgemma-1.5-4b', label: 'MedGemma 1.5 (4B)' },
+      { id: 'medgemma-27b', label: 'MedGemma 27B' },
+      { id: 'qwen2.5-14b', label: 'Qwen 2.5 14B' },
+      { id: 'qwen2.5-32b', label: 'Qwen 2.5 32B' },
     ],
   },
 ];
