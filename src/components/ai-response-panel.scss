@@ -8,44 +8,60 @@
   gap: layout.$spacing-04;
 }
 
-// Per-section validator confidence chips (green/yellow/red), mirroring the validation
-// dashboard's tag. Plain styled labels — not a hand-rolled interactive primitive.
-.confidenceRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: layout.$spacing-03;
+// Per-section validator confidence — parity with the validate dashboard's confSection
+// inversion: red shows the caveat + collapses the message; yellow shows the message +
+// collapses the note; green shows the message. Chip/caveat colors mirror the dashboard,
+// adapted for the light chat surface.
+.csec {
+  margin-top: layout.$spacing-04;
 }
 
-.confidenceChip {
+.ctitle {
   @include type.type-style('label-01');
-  display: inline-flex;
-  align-items: center;
-  gap: layout.$spacing-02;
-  padding: layout.$spacing-01 layout.$spacing-03;
-  border-radius: 12px;
-  border: 1px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: colors.$gray-60;
+  margin-bottom: layout.$spacing-02;
+}
 
-  strong {
-    font-weight: 600;
-  }
+.cchip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.625rem;
+  margin-left: layout.$spacing-02;
+  vertical-align: middle;
+}
 
-  &[data-level='green'] {
-    background: colors.$green-10;
-    color: colors.$green-70;
-    border-color: colors.$green-30;
-  }
+.caveat {
+  border-radius: 6px;
+  padding: layout.$spacing-03 layout.$spacing-04;
+  font-size: 0.75rem;
+  margin: layout.$spacing-02 0;
+}
 
-  &[data-level='yellow'] {
-    background: colors.$yellow-10;
-    color: colors.$yellow-70;
-    border-color: colors.$yellow-30;
-  }
+.caveatRed {
+  background: #fff1f1;
+  border: 1px solid #da1e28;
+  color: #a2191f;
+}
 
-  &[data-level='red'] {
-    background: colors.$red-10;
-    color: colors.$red-70;
-    border-color: colors.$red-30;
-  }
+.caveatYellow {
+  background: #fcf4d6;
+  border: 1px solid #f1c21b;
+  color: #684e00;
+}
+
+.collapse > summary {
+  cursor: pointer;
+  color: colors.$blue-60;
+  font-size: 0.6875rem;
+  padding: layout.$spacing-02 0;
+}
+
+.ans {
+  margin-top: layout.$spacing-02;
 }
 
 .answerSection {

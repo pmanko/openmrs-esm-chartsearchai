@@ -371,7 +371,7 @@ describe('AiResponsePanel model tag', () => {
   });
 });
 
-describe('AiResponsePanel confidence chips', () => {
+describe('AiResponsePanel per-section confidence', () => {
   const baseProps = {
     answer: '**Answer**\nHgb is 14.0 [1].\n\n**In Depth**\n- within range [1]',
     references: [{ index: 1, resourceType: 'obs', resourceId: 101, date: '2025-11-24' }],
@@ -381,7 +381,7 @@ describe('AiResponsePanel confidence chips', () => {
     patientUuid,
   };
 
-  it('renders a chip per section with the dashboard-equivalent label, level, and note tooltip', () => {
+  it('heads each section (Answer / In-Depth) with its confidence chip', () => {
     render(
       <AiResponsePanel
         {...baseProps}
@@ -391,31 +391,52 @@ describe('AiResponsePanel confidence chips', () => {
         }}
       />,
     );
-
-    const row = screen.getByTestId('confidence-row');
-    expect(screen.getByText('High confidence')).toBeInTheDocument();
-    expect(screen.getByText('Medium confidence')).toBeInTheDocument();
-
-    const chips = row.querySelectorAll('[data-level]');
-    expect(chips).toHaveLength(2);
-    expect(chips[0].getAttribute('data-level')).toBe('green');
-    expect(chips[1].getAttribute('data-level')).toBe('yellow');
-    expect(chips[1].getAttribute('title')).toBe('one claim regenerated');
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('High confidence');
+    expect(screen.getByTestId('section-in-depth')).toHaveTextContent('Medium confidence');
   });
 
-  it('renders no confidence row when the backend sends none (single model / parity lane)', () => {
-    render(<AiResponsePanel {...baseProps} />);
-    expect(screen.queryByTestId('confidence-row')).not.toBeInTheDocument();
-  });
-
-  it('hides confidence while the answer is still streaming', () => {
+  it('YELLOW (med): shows the message, collapses the review note behind a reveal', () => {
     render(
       <AiResponsePanel
         {...baseProps}
-        isLoading={true}
-        confidence={{ answer: { level: 'red', note: 'unresolved' } }}
+        confidence={{ answer: { level: 'green' }, in_depth: { level: 'yellow', note: 'one claim regenerated' } }}
       />,
     );
-    expect(screen.queryByTestId('confidence-row')).not.toBeInTheDocument();
+    const inDepth = screen.getByTestId('section-in-depth');
+    expect(inDepth).toHaveTextContent('within range'); // the message is shown
+    const details = inDepth.querySelector('details');
+    expect(details).toBeTruthy();
+    expect(details).toHaveTextContent(/show review note/i);
+    expect(details).toHaveTextContent('one claim regenerated'); // note is inside the collapse
+    expect(details).not.toHaveAttribute('open'); // collapsed by default
+  });
+
+  it('RED (low): shows the caveat note, WITHHOLDS the message behind "show <section>"', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{ answer: { level: 'green' }, in_depth: { level: 'red', note: 'supporting context unresolved' } }}
+      />,
+    );
+    const inDepth = screen.getByTestId('section-in-depth');
+    expect(inDepth).toHaveTextContent('Low confidence');
+    expect(inDepth).toHaveTextContent('supporting context unresolved'); // the caveat note is shown
+    const details = inDepth.querySelector('details');
+    expect(details).toBeTruthy();
+    expect(details).toHaveTextContent(/show in depth/i); // message collapsed behind the reveal
+    expect(details).not.toHaveAttribute('open');
+    // the green Answer section is shown with no collapse
+    expect(screen.getByTestId('section-answer').querySelector('details')).toBeNull();
+  });
+
+  it('renders no sections / chips when the backend sends no confidence (single model / parity)', () => {
+    render(<AiResponsePanel {...baseProps} />);
+    expect(screen.queryByTestId('section-answer')).not.toBeInTheDocument();
+    expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
+  });
+
+  it('does not split into sections while the answer is still streaming', () => {
+    render(<AiResponsePanel {...baseProps} isLoading={true} confidence={{ answer: { level: 'red', note: 'x' } }} />);
+    expect(screen.queryByTestId('section-answer')).not.toBeInTheDocument();
   });
 });
