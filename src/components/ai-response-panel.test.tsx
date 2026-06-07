@@ -370,3 +370,52 @@ describe('AiResponsePanel model tag', () => {
     expect(screen.queryByText('med-agent-team')).not.toBeInTheDocument();
   });
 });
+
+describe('AiResponsePanel confidence chips', () => {
+  const baseProps = {
+    answer: '**Answer**\nHgb is 14.0 [1].\n\n**In Depth**\n- within range [1]',
+    references: [{ index: 1, resourceType: 'obs', resourceId: 101, date: '2025-11-24' }],
+    questionId: 'q1',
+    error: null,
+    isLoading: false,
+    patientUuid,
+  };
+
+  it('renders a chip per section with the dashboard-equivalent label, level, and note tooltip', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: { level: 'green', note: '' },
+          in_depth: { level: 'yellow', note: 'one claim regenerated' },
+        }}
+      />,
+    );
+
+    const row = screen.getByTestId('confidence-row');
+    expect(screen.getByText('High confidence')).toBeInTheDocument();
+    expect(screen.getByText('Medium confidence')).toBeInTheDocument();
+
+    const chips = row.querySelectorAll('[data-level]');
+    expect(chips).toHaveLength(2);
+    expect(chips[0].getAttribute('data-level')).toBe('green');
+    expect(chips[1].getAttribute('data-level')).toBe('yellow');
+    expect(chips[1].getAttribute('title')).toBe('one claim regenerated');
+  });
+
+  it('renders no confidence row when the backend sends none (single model / parity lane)', () => {
+    render(<AiResponsePanel {...baseProps} />);
+    expect(screen.queryByTestId('confidence-row')).not.toBeInTheDocument();
+  });
+
+  it('hides confidence while the answer is still streaming', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        isLoading={true}
+        confidence={{ answer: { level: 'red', note: 'unresolved' } }}
+      />,
+    );
+    expect(screen.queryByTestId('confidence-row')).not.toBeInTheDocument();
+  });
+});

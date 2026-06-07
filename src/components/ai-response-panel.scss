@@ -8,6 +8,46 @@
   gap: layout.$spacing-04;
 }
 
+// Per-section validator confidence chips (green/yellow/red), mirroring the validation
+// dashboard's tag. Plain styled labels — not a hand-rolled interactive primitive.
+.confidenceRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: layout.$spacing-03;
+}
+
+.confidenceChip {
+  @include type.type-style('label-01');
+  display: inline-flex;
+  align-items: center;
+  gap: layout.$spacing-02;
+  padding: layout.$spacing-01 layout.$spacing-03;
+  border-radius: 12px;
+  border: 1px solid transparent;
+
+  strong {
+    font-weight: 600;
+  }
+
+  &[data-level='green'] {
+    background: colors.$green-10;
+    color: colors.$green-70;
+    border-color: colors.$green-30;
+  }
+
+  &[data-level='yellow'] {
+    background: colors.$yellow-10;
+    color: colors.$yellow-70;
+    border-color: colors.$yellow-30;
+  }
+
+  &[data-level='red'] {
+    background: colors.$red-10;
+    color: colors.$red-70;
+    border-color: colors.$red-30;
+  }
+}
+
 .answerSection {
   position: relative;
 }

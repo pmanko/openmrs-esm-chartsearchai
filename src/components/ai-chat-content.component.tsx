@@ -293,6 +293,7 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
                   answer={msg.answer}
                   references={msg.references}
                   blocks={msg.blocks}
+                  confidence={msg.confidence}
                   questionId={msg.questionId}
                   error={msg.error}
                   isLoading={msg.isLoading}

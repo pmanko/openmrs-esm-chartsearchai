@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useStore } from '@openmrs/esm-framework';
 import {
   type AiBlock,
+  type AiConfidence,
   type AiReference,
   type AiSearchResponse,
   type ChatHistoryMessage,
@@ -27,6 +28,8 @@ export interface ChatMessage {
    * tag. Undefined for older rows / system notices.
    */
   resolvedModel?: string;
+  /** Per-section validator confidence (green/yellow/red + note); validated hub tiers only. */
+  confidence?: AiConfidence;
   /**
    * A `'system'` message is an in-thread notice (e.g. "clinical context
    * refreshed") rather than a Q+A turn. Such rows carry only `answer` text and
@@ -105,6 +108,7 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
       if (pending) {
         pending.answer = m.content;
         pending.blocks = m.blocks;
+        pending.confidence = m.confidence;
         pending.questionId = m.messageId;
         out.push(pending);
         pending = null;
@@ -274,6 +278,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             answer: response.answer,
             references: response.references,
             blocks: response.blocks,
+            confidence: response.confidence,
             questionId: response.messageId ?? response.questionId ?? '',
             resolvedModel: response.resolvedModel,
             isLoading: false,
