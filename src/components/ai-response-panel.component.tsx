@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { IconButton, InlineLoading, Tag } from '@carbon/react';
 import { Copy } from '@carbon/react/icons';
 import {
+  type AiAnswerValidation,
   type AiBlock,
   type AiConfidence,
   type AiConfidenceSection,
+  type AiInDepth,
   type AiReference,
   type AiSafetyWarning,
   SESSION_EXPIRED_ERROR_CODE,
@@ -29,6 +31,10 @@ interface AiResponsePanelProps {
   resolvedModel?: string;
   /** Per-section validator confidence (validated hub tiers); rendered as green/yellow/red chips. */
   confidence?: AiConfidence;
+  /** Staged answer check lifecycle; rendered as the primary Answer badge when present. */
+  answerValidation?: AiAnswerValidation;
+  /** Staged team In-Depth state. */
+  inDepth?: AiInDepth;
   onFeedbackComplete?: () => void;
 }
 
@@ -145,6 +151,23 @@ const ConfidenceChip: React.FC<{ level: string }> = ({ level }) => {
   );
 };
 
+const validationLabelFallback: Record<string, string> = {
+  validating: 'Checking answer',
+  checked: 'Checked',
+  edited: 'Updated after check',
+  needs_review: 'Needs review',
+  unavailable: 'Check unavailable',
+};
+
+const AnswerValidationBadge: React.FC<{ validation: AiAnswerValidation }> = ({ validation }) => {
+  const className = styles[`answerValidation_${validation.status}`] ?? styles.answerValidation_unavailable;
+  return (
+    <span className={`${styles.answerValidation} ${className}`} title={validation.summary ?? ''}>
+      {validation.label || validationLabelFallback[validation.status] || 'Check unavailable'}
+    </span>
+  );
+};
+
 /**
  * One answer section (Answer / In-Depth) with the validate dashboard's confidence inversion
  * (scripts/validate-dashboard.py confSection):
@@ -156,9 +179,10 @@ const ConfidenceSection: React.FC<{
   label: string;
   body: string;
   section?: AiConfidenceSection;
+  answerValidation?: AiAnswerValidation;
   references: AiReference[];
   patientUuid: string;
-}> = ({ label, body, section, references, patientUuid }) => {
+}> = ({ label, body, section, answerValidation, references, patientUuid }) => {
   if (!body) {
     return null;
   }
@@ -168,7 +192,8 @@ const ConfidenceSection: React.FC<{
   return (
     <div className={styles.csec} data-testid={`section-${label.replace(/\s+/g, '-').toLowerCase()}`}>
       <div className={styles.ctitle}>
-        {label} <ConfidenceChip level={level} />
+        {label} {answerValidation && <AnswerValidationBadge validation={answerValidation} />}{' '}
+        {section && <ConfidenceChip level={level} />}
       </div>
       {level === 'red' ? (
         <>
@@ -191,6 +216,18 @@ const ConfidenceSection: React.FC<{
       ) : (
         <div className={styles.ans}>{rendered}</div>
       )}
+      {answerValidation?.status === 'edited' && answerValidation.originalAnswer && (
+        <details className={styles.collapse}>
+          <summary>view original</summary>
+          <div className={`${styles.caveat} ${styles.caveatYellow}`}>
+            <MarkdownAnswer
+              answer={answerValidation.originalAnswer}
+              references={references}
+              patientUuid={patientUuid}
+            />
+          </div>
+        </details>
+      )}
     </div>
   );
 };
@@ -205,6 +242,8 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   patientUuid,
   resolvedModel,
   confidence,
+  answerValidation,
+  inDepth,
   onFeedbackComplete,
 }) => {
   const { t } = useTranslation();
@@ -228,11 +267,11 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
     );
   }
 
-  // Per-section confidence view only once the answer is complete and the backend sent
-  // confidence (validated hub tiers). While streaming, or for single models / the parity
-  // lane (no confidence), render the whole answer plainly.
-  const showSections = Boolean(answer) && !isLoading && Boolean(confidence);
-  const sections = showSections && confidence ? splitSections(answer) : null;
+  // Normal combined team responses split after completion. Staged team responses split as soon
+  // as the direct answer is complete, while the In-Depth section remains pending.
+  const showSections =
+    Boolean(answer) && (Boolean(inDepth) || Boolean(answerValidation) || (!isLoading && Boolean(confidence)));
+  const sections = showSections ? splitSections(answer) : null;
 
   return (
     <div className={styles.responseContainer}>
@@ -246,20 +285,50 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
           {isLoading && <InlineLoading className={styles.streamingIndicator} />}
         </div>
       )}
-      {sections && confidence && (
+      {sections && (
         <div className={styles.answerSection}>
           <ConfidenceSection
             label="Answer"
             body={sections.answerBody}
-            section={confidence.answer}
+            section={confidence?.answer}
+            answerValidation={answerValidation}
             references={references}
             patientUuid={patientUuid}
           />
-          {sections.inDepthBody && (
+          {inDepth?.status === 'pending' && (
+            <div className={styles.csec} data-testid="section-in-depth">
+              <div className={styles.ctitle}>In Depth</div>
+              {inDepth.answer ? (
+                <div className={styles.ans}>
+                  <MarkdownAnswer answer={inDepth.answer} references={references} patientUuid={patientUuid} />
+                </div>
+              ) : (
+                <InlineLoading className={styles.streamingIndicator} description="Preparing in-depth..." />
+              )}
+            </div>
+          )}
+          {inDepth?.status === 'failed' && (
+            <div className={styles.csec} data-testid="section-in-depth">
+              <div className={styles.ctitle}>In Depth</div>
+              <div className={`${styles.caveat} ${styles.caveatYellow}`}>
+                {inDepth.error ?? 'In-Depth could not be completed.'}
+              </div>
+            </div>
+          )}
+          {inDepth?.status === 'complete' && inDepth.answer && (
+            <ConfidenceSection
+              label="In Depth"
+              body={inDepth.answer}
+              section={confidence?.in_depth}
+              references={references}
+              patientUuid={patientUuid}
+            />
+          )}
+          {!inDepth && sections.inDepthBody && (
             <ConfidenceSection
               label="In Depth"
               body={sections.inDepthBody}
-              section={confidence.in_depth}
+              section={confidence?.in_depth}
               references={references}
               patientUuid={patientUuid}
             />
@@ -267,7 +336,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         </div>
       )}
 
-      {!isLoading &&
+      {(!isLoading || Boolean(inDepth)) &&
         blocks?.map((block, idx) =>
           block.kind === 'table' ? (
             <AiTableBlockView key={`block-${idx}`} block={block} references={references} patientUuid={patientUuid} />

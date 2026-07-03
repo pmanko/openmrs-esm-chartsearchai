@@ -76,6 +76,23 @@ export interface AiConfidence {
   in_depth?: AiConfidenceSection;
 }
 
+export interface AiInDepth {
+  status: 'pending' | 'complete' | 'failed';
+  answer?: string;
+  error?: string;
+}
+
+export type AiAnswerValidationStatus = 'validating' | 'checked' | 'edited' | 'needs_review' | 'unavailable';
+
+export interface AiAnswerValidation {
+  status: AiAnswerValidationStatus;
+  label: string;
+  summary?: string;
+  issues?: unknown[];
+  completedAt?: string;
+  originalAnswer?: string;
+}
+
 export interface AiSearchResponse {
   answer: string;
   references: AiReference[];
@@ -92,14 +109,21 @@ export interface AiSearchResponse {
   resolvedModel?: string;
   /** Per-section validator confidence (green/yellow/red + note) from the validated hub tiers. */
   confidence?: AiConfidence;
+  /** Clinician-facing answer check lifecycle for staged validated responses. */
+  answerValidation?: AiAnswerValidation;
+  /** Staged team responses attach background reasoning after the direct answer settles. */
+  inDepth?: AiInDepth;
 }
 
 export interface ChatHistoryMessage {
   messageId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  references?: AiReference[];
   blocks?: AiBlock[];
   confidence?: AiConfidence;
+  answerValidation?: AiAnswerValidation;
+  inDepth?: AiInDepth;
   createdAt: number;
 }
 
@@ -118,6 +142,13 @@ export interface AiFeedback {
 
 export interface AiSearchError {
   error: string;
+}
+
+function shouldUseStagedInDepth(modelName: string): boolean {
+  return (
+    (modelName.startsWith('med-agent-team-') && !modelName.startsWith('med-agent-team-parity')) ||
+    modelName.startsWith('answer:')
+  );
 }
 
 /**
@@ -388,7 +419,14 @@ export function chatPatientChartStream(
   question: string,
   callbacks: {
     onSession: (uuid: string) => void;
+    onThinking?: (chunk: string) => void;
     onToken: (token: string) => void;
+    onAnswerDone?: (response: AiSearchResponse) => void;
+    onAnswerValidation?: (response: AiSearchResponse) => void;
+    onInDepthPending?: (payload: { messageId?: string; inDepth?: AiInDepth }) => void;
+    onInDepthToken?: (token: string) => void;
+    onInDepthDone?: (inDepth: AiInDepth) => void;
+    onInDepthError?: (inDepth: AiInDepth) => void;
     onDone: (response: AiSearchResponse) => void;
     onError: (error: string) => void;
   },
@@ -405,6 +443,9 @@ export function chatPatientChartStream(
   if (backend) {
     body.endpointUrl = backend.endpointUrl;
     body.modelName = backend.modelName;
+    if (shouldUseStagedInDepth(backend.modelName)) {
+      body.staged = 'true';
+    }
   }
 
   window
@@ -470,6 +511,42 @@ export function chatPatientChartStream(
         const data = dataLines.join('\n');
         if (eventType === 'token') {
           callbacks.onToken(data);
+        } else if (eventType === 'thinking') {
+          callbacks.onThinking?.(data);
+        } else if (eventType === 'answer_done') {
+          try {
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            callbacks.onAnswerDone?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+          } catch {
+            callbacks.onError('Failed to parse staged answer response');
+          }
+        } else if (eventType === 'answer_validation') {
+          try {
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            callbacks.onAnswerValidation?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+          } catch {
+            callbacks.onError('Failed to parse answer validation response');
+          }
+        } else if (eventType === 'indepth_pending') {
+          try {
+            callbacks.onInDepthPending?.(JSON.parse(data) as { messageId?: string; inDepth?: AiInDepth });
+          } catch {
+            callbacks.onError('Failed to parse in-depth pending response');
+          }
+        } else if (eventType === 'indepth_token') {
+          callbacks.onInDepthToken?.(data);
+        } else if (eventType === 'indepth_done') {
+          try {
+            callbacks.onInDepthDone?.(JSON.parse(data) as AiInDepth);
+          } catch {
+            callbacks.onError('Failed to parse in-depth response');
+          }
+        } else if (eventType === 'indepth_error') {
+          try {
+            callbacks.onInDepthError?.(JSON.parse(data) as AiInDepth);
+          } catch {
+            callbacks.onError('Failed to parse in-depth error response');
+          }
         } else if (eventType === 'done') {
           streamFinalized = true;
           try {

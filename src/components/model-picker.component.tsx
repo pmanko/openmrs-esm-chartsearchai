@@ -11,8 +11,10 @@ import styles from './model-picker.scss';
  * Curated picker contents — the published validation arms only, in two plain-language groups.
  * Models are matched by id (env-agnostic) against whatever endpoint /endpoints reports serving
  * them, so this works locally and on the cloud regardless of the registered endpoint URLs.
- * Anything not listed (team-internal component models like qwen/medgemma/gemma-31b, quant
- * variants, the LM Studio MLX line) is intentionally hidden from the chat picker.
+ * Product single-model choices route through med-agent-hub answer:* ids so they get the same
+ * temporal facts, deterministic gate, staged validation, and In-Depth tail as the team choices.
+ * Anything not listed (raw component models, quant variants, the LM Studio MLX line) is
+ * intentionally hidden from the chat picker.
  */
 const CURATED_GROUPS: Array<{ label: string; items: Array<{ id: string; label: string }> }> = [
   {
@@ -27,14 +29,14 @@ const CURATED_GROUPS: Array<{ label: string; items: Array<{ id: string; label: s
   {
     label: 'Single models',
     items: [
-      { id: 'gemma-e2b', label: 'Gemma 2B' },
-      { id: 'gemma-e4b', label: 'Gemma 4B' },
-      { id: 'gemma-4-12b', label: 'Gemma 12B' },
-      { id: 'gemma-26b', label: 'Gemma 26B' },
-      { id: 'medgemma-1.5-4b', label: 'MedGemma 1.5 (4B)' },
-      { id: 'medgemma-27b', label: 'MedGemma 27B' },
-      { id: 'qwen2.5-14b', label: 'Qwen 2.5 14B' },
-      { id: 'qwen2.5-32b', label: 'Qwen 2.5 32B' },
+      { id: 'answer:gemma-e2b@synthesis-answer~enforce~temp0', label: 'Gemma 2B' },
+      { id: 'answer:gemma-e4b@synthesis-answer~enforce~temp0', label: 'Gemma 4B' },
+      { id: 'answer:gemma-4-12b@synthesis-answer~enforce~temp0', label: 'Gemma 12B' },
+      { id: 'answer:gemma-26b@synthesis-answer~enforce~temp0', label: 'Gemma 26B' },
+      { id: 'answer:medgemma-1.5-4b@synthesis-answer~enforce~temp0', label: 'MedGemma 1.5 (4B)' },
+      { id: 'answer:medgemma-27b@synthesis-answer~enforce~temp0', label: 'MedGemma 27B' },
+      { id: 'answer:qwen2.5-14b@synthesis-answer~enforce~temp0', label: 'Qwen 2.5 14B' },
+      { id: 'answer:qwen2.5-32b@synthesis-answer~enforce~temp0', label: 'Qwen 2.5 32B' },
     ],
   },
 ];

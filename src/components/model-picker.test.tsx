@@ -23,9 +23,10 @@ const LLAMA = 'http://llama/v1/chat/completions';
 const HUB = 'http://hub/v1/chat/completions';
 
 // A realistic /endpoints payload: LM Studio + llama-server carry team-internal component
-// models (qwen/medgemma/gemma-31b), quant/non-validated variants, and the GGUF single models;
-// Med Agent Hub carries all 9 tiers. The curated picker must surface ONLY the validation arms
-// (4 AI-team + 3 single), located by id across endpoints, and hide everything else.
+// models (qwen/medgemma/gemma-31b), quant/non-validated variants, and raw GGUF single models;
+// Med Agent Hub carries the product team ids plus answer:* single-model ids. The curated picker
+// must surface ONLY the validation/product arms (4 AI-team + 8 hub-routed singles), located by id
+// across endpoints, and hide everything else.
 const CURATED_DATA = {
   endpoints: [
     {
@@ -71,6 +72,46 @@ const CURATED_DATA = {
         { id: 'med-agent-team-med-validated', displayName: 'med-validated', loaded: false },
         { id: 'med-agent-team-low-validated-12b', displayName: 'low-validated-12b', loaded: false },
         { id: 'med-agent-team-parity', displayName: 'parity', loaded: false },
+        {
+          id: 'answer:gemma-e2b@synthesis-answer~enforce~temp0',
+          displayName: 'answer gemma-e2b',
+          loaded: false,
+        },
+        {
+          id: 'answer:gemma-e4b@synthesis-answer~enforce~temp0',
+          displayName: 'answer gemma-e4b',
+          loaded: false,
+        },
+        {
+          id: 'answer:gemma-4-12b@synthesis-answer~enforce~temp0',
+          displayName: 'answer gemma-4-12b',
+          loaded: false,
+        },
+        {
+          id: 'answer:gemma-26b@synthesis-answer~enforce~temp0',
+          displayName: 'answer gemma-26b',
+          loaded: false,
+        },
+        {
+          id: 'answer:medgemma-1.5-4b@synthesis-answer~enforce~temp0',
+          displayName: 'answer medgemma-1.5-4b',
+          loaded: false,
+        },
+        {
+          id: 'answer:medgemma-27b@synthesis-answer~enforce~temp0',
+          displayName: 'answer medgemma-27b',
+          loaded: false,
+        },
+        {
+          id: 'answer:qwen2.5-14b@synthesis-answer~enforce~temp0',
+          displayName: 'answer qwen2.5-14b',
+          loaded: false,
+        },
+        {
+          id: 'answer:qwen2.5-32b@synthesis-answer~enforce~temp0',
+          displayName: 'answer qwen2.5-32b',
+          loaded: false,
+        },
         { id: 'med-agent-team-low', displayName: 'low', loaded: false },
         { id: 'med-agent-team-high', displayName: 'high', loaded: false },
       ],
@@ -208,13 +249,16 @@ describe('ModelPicker curated sections', () => {
     expect(onSwitched).toHaveBeenCalledWith('med-agent-team-high-validated');
   });
 
-  it('selecting a single model resolves its serving endpoint (llama-server) by id', async () => {
+  it('selecting a single model resolves its med-agent-hub answer path by id', async () => {
     mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
     await openMenu(/Med \(validated\)/i);
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Gemma 12B/i }));
     await waitFor(() =>
-      expect(chatSessionStore.getState().selectedBackend).toEqual({ endpointUrl: LLAMA, modelName: 'gemma-4-12b' }),
+      expect(chatSessionStore.getState().selectedBackend).toEqual({
+        endpointUrl: HUB,
+        modelName: 'answer:gemma-4-12b@synthesis-answer~enforce~temp0',
+      }),
     );
   });
 

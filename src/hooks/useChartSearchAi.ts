@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useStore } from '@openmrs/esm-framework';
 import {
   type AiBlock,
+  type AiAnswerValidation,
   type AiConfidence,
+  type AiInDepth,
   type AiReference,
   type AiSafetyWarning,
   type AiSearchResponse,
@@ -35,6 +37,10 @@ export interface ChatMessage {
   resolvedModel?: string;
   /** Per-section validator confidence (green/yellow/red + note); validated hub tiers only. */
   confidence?: AiConfidence;
+  /** Answer check lifecycle for staged validated responses. */
+  answerValidation?: AiAnswerValidation;
+  /** Staged team In-Depth state attached to this assistant turn. */
+  inDepth?: AiInDepth;
   /**
    * A `'system'` message is an in-thread notice (e.g. "clinical context
    * refreshed") rather than a Q+A turn. Such rows carry only `answer` text and
@@ -115,6 +121,9 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         pending.answer = m.content;
         pending.blocks = m.blocks;
         pending.confidence = m.confidence;
+        pending.answerValidation = m.answerValidation;
+        pending.inDepth = m.inDepth;
+        pending.references = m.references ?? [];
         pending.questionId = m.messageId;
         out.push(pending);
         pending = null;
@@ -128,6 +137,10 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
     out.push(pending);
   }
   return out;
+}
+
+function stripInDepthHeader(text: string): string {
+  return text.replace(/^\s*\*\*In ?Depth\*\*\s*/i, '').trimStart();
 }
 
 export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
@@ -289,6 +302,8 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             safetyWarnings: response.safetyWarnings ?? [],
             blocks: response.blocks,
             confidence: response.confidence,
+            answerValidation: response.answerValidation,
+            inDepth: response.inDepth,
             questionId: response.messageId ?? response.questionId ?? '',
             resolvedModel: response.resolvedModel,
             isLoading: false,
@@ -317,6 +332,112 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           if (idx === -1) return prev;
           const updated = [...prev];
           updated[idx] = { ...updated[idx], error: errMessage, isLoading: false };
+          return updated;
+        });
+      };
+
+      const answerDone = (response: AiSearchResponse) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            answer: response.answer,
+            references: response.references,
+            safetyWarnings: response.safetyWarnings ?? [],
+            blocks: response.blocks,
+            confidence: response.confidence,
+            answerValidation: response.answerValidation,
+            inDepth: response.inDepth ?? { status: 'pending', answer: '' },
+            questionId: response.messageId ?? response.questionId ?? '',
+            resolvedModel: response.resolvedModel,
+            reasoning: '',
+            isLoading: true,
+          };
+          return updated;
+        });
+        if (response.session) {
+          setSessionUuid(patientUuid, response.session);
+        }
+      };
+
+      const answerValidation = (response: AiSearchResponse) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            answer: response.answer,
+            references: response.references,
+            safetyWarnings: response.safetyWarnings ?? [],
+            blocks: response.blocks,
+            confidence: response.confidence,
+            answerValidation: response.answerValidation,
+            questionId: response.messageId ?? response.questionId ?? updated[idx].questionId,
+            resolvedModel: response.resolvedModel ?? updated[idx].resolvedModel,
+          };
+          return updated;
+        });
+      };
+
+      const inDepthPending = (payload: { messageId?: string; inDepth?: AiInDepth }) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            questionId: payload.messageId ?? updated[idx].questionId,
+            inDepth: payload.inDepth ?? { status: 'pending', answer: updated[idx].inDepth?.answer ?? '' },
+          };
+          return updated;
+        });
+      };
+
+      const inDepthToken = (token: string) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          const current = updated[idx].inDepth?.answer ?? '';
+          updated[idx] = {
+            ...updated[idx],
+            inDepth: { status: 'pending', answer: stripInDepthHeader(current + token) },
+          };
+          return updated;
+        });
+      };
+
+      const inDepthDone = (inDepth: AiInDepth) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            inDepth: { ...inDepth, answer: stripInDepthHeader(inDepth.answer ?? '') },
+          };
+          return updated;
+        });
+      };
+
+      const inDepthError = (inDepth: AiInDepth) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            inDepth: inDepth.status === 'failed' ? inDepth : { ...inDepth, status: 'failed' },
+          };
           return updated;
         });
       };
@@ -359,6 +480,12 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
                 return updated;
               });
             },
+            onAnswerDone: answerDone,
+            onAnswerValidation: answerValidation,
+            onInDepthPending: inDepthPending,
+            onInDepthToken: inDepthToken,
+            onInDepthDone: inDepthDone,
+            onInDepthError: inDepthError,
             onDone: done,
             onError: fail,
           },

@@ -34,6 +34,47 @@
   vertical-align: middle;
 }
 
+.answerValidation {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 0.625rem;
+  margin-left: layout.$spacing-02;
+  vertical-align: middle;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.answerValidation_validating {
+  background: #edf5ff;
+  color: #0043ce;
+  border: 1px solid #78a9ff;
+}
+
+.answerValidation_checked {
+  background: #defbe6;
+  color: #0e6027;
+  border: 1px solid #42be65;
+}
+
+.answerValidation_edited {
+  background: #fcf4d6;
+  color: #684e00;
+  border: 1px solid #f1c21b;
+}
+
+.answerValidation_needs_review {
+  background: #fff1f1;
+  color: #a2191f;
+  border: 1px solid #da1e28;
+}
+
+.answerValidation_unavailable {
+  background: colors.$gray-10;
+  color: colors.$gray-70;
+  border: 1px solid colors.$gray-30;
+}
+
 .caveat {
   border-radius: 6px;
   padding: layout.$spacing-03 layout.$spacing-04;
