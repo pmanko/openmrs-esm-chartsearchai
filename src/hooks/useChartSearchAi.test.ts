@@ -473,7 +473,14 @@ describe('useChartSearchAi', () => {
     act(() => cb.onToken('Aspirin'));
     expect(phase()).toBe('answering');
 
-    act(() => cb.onAnswerDone({ answer: 'Aspirin [1].', references: [], messageId: 'm-1' }));
+    act(() =>
+      cb.onAnswerDone({
+        answer: 'Aspirin [1].',
+        references: [],
+        answerValidation: { status: 'validating', label: 'Checking answer' },
+        messageId: 'm-1',
+      }),
+    );
     expect(phase()).toBe('validating');
 
     act(() =>
@@ -491,6 +498,29 @@ describe('useChartSearchAi', () => {
 
     act(() => cb.onInDepthDone({ status: 'complete', answer: 'In-depth detail.' }));
     expect(phase()).toBe('complete');
+  });
+
+  it('settles immediately at answer_done when no validation is pending (no validator configured)', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q?');
+    });
+    // answer_done with NO answerValidation → no validation phase is coming; settle now so the composer
+    // unlocks (mirrors the hub emitting answer_done without a `validating` status when no validator).
+    act(() =>
+      mockChatStream.mock.calls[0][3].onAnswerDone({
+        answer: 'A [1].',
+        references: [],
+        inDepth: { status: 'pending', answer: '' },
+        messageId: 'm-1',
+      }),
+    );
+
+    expect(result.current.messages[0].phase).toBe('settled');
+    expect(result.current.isAwaitingAnswer).toBe(false);
   });
 
   it('moves to error phase when answer generation fails', async () => {

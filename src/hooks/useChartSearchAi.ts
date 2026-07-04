@@ -395,7 +395,11 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             questionId: response.messageId ?? response.questionId ?? '',
             resolvedModel: response.resolvedModel,
             reasoning: '',
-            phase: 'validating',
+            // Only enter the `validating` phase when a validation check is actually coming (the hub
+            // marks the answer_done with answerValidation.status === 'validating'). With no validator
+            // configured, no answer_validation event follows — settle immediately so the composer
+            // unlocks and there is no phantom "checking answer" state.
+            phase: response.answerValidation?.status === 'validating' ? 'validating' : 'settled',
           };
           return updated;
         });
