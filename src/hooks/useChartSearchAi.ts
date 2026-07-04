@@ -15,6 +15,7 @@ import {
   startNewChat,
 } from '../api/chartsearchai';
 import { chatSessionStore } from '../store/chat-session.store';
+import { type TurnPhase, isAwaitingAnswer as phaseIsAwaitingAnswer, isAnswerSettled, isTerminal } from './turn-phase';
 
 export interface ChatMessage {
   id: string;
@@ -24,7 +25,11 @@ export interface ChatMessage {
   safetyWarnings?: AiSafetyWarning[];
   blocks?: AiBlock[];
   questionId: string;
-  isLoading: boolean;
+  /**
+   * The turn's single lifecycle phase — the source of truth for composer behavior, section
+   * rendering, and DOM signals. Mirrors the backend staged SSE events (see {@link TurnPhase}).
+   */
+  phase: TurnPhase;
   error: string | null;
   /** Live model reasoning while the answer is still being generated — a transient
    *  "thinking" indicator, cleared when the answer completes. Never the answer. */
@@ -51,7 +56,12 @@ export interface ChatMessage {
 
 interface UseChartSearchAiReturn {
   messages: ChatMessage[];
-  isAnyLoading: boolean;
+  /**
+   * The latest turn is still producing its direct answer ({@link TurnPhase} `answering`/`validating`).
+   * The composer disables on this — so a new question can be asked while the prior turn's in-depth is
+   * still streaming in the background.
+   */
+  isAwaitingAnswer: boolean;
   submitQuestion: (patientUuid: string, question: string) => void;
   clearMessages: () => void;
   stopCurrent: () => void;
@@ -112,7 +122,7 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         answer: '',
         references: [],
         questionId: '',
-        isLoading: false,
+        phase: 'complete',
         error: null,
         reasoning: '',
       };
@@ -207,13 +217,13 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         const idx = prev.findIndex((m) => m.id === stoppedId);
         if (idx === -1) return prev;
         const msg = prev[idx];
-        if (!msg.isLoading) return prev;
+        if (isTerminal(msg.phase)) return prev;
         if (!msg.answer) {
           return prev.filter((_, i) => i !== idx);
         }
         const updated = [...prev];
         // Mirror `done`: a settled message keeps no reasoning scratchpad, even when stopped mid-stream.
-        updated[idx] = { ...msg, isLoading: false, reasoning: '' };
+        updated[idx] = { ...msg, phase: 'complete', reasoning: '' };
         return updated;
       });
     }
@@ -253,7 +263,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       answer: 'Clinical context refreshed — the latest chart data is now available to the assistant.',
       references: [],
       questionId: '',
-      isLoading: false,
+      phase: 'complete',
       error: null,
       reasoning: '',
       kind: 'system',
@@ -263,7 +273,38 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
 
   const submitQuestion = useCallback(
     (patientUuid: string, question: string) => {
-      if (abortControllerRef.current) return;
+      if (abortControllerRef.current) {
+        // A turn is still in flight. If its answer has NOT settled yet, don't start a second
+        // answer generation (one at a time — this is what keeps the server's getLastOrdinal()
+        // path single-flight and race-free). If the answer HAS settled and only the background
+        // in-depth is trailing, PREEMPT it so this new question starts immediately. The turn's
+        // phase is the single source of truth: isAnswerSettled once validation has landed.
+        const preemptedId = inFlightMessageIdRef.current;
+        const inFlight = preemptedId
+          ? (chatSessionStore.getState().messagesByPatient[patientUuid] ?? []).find((m) => m.id === preemptedId)
+          : undefined;
+        if (!inFlight || !isAnswerSettled(inFlight.phase)) return;
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+        inFlightMessageIdRef.current = null;
+        if (preemptedId) {
+          updateMessages(patientUuid, (prev) => {
+            const idx = prev.findIndex((m) => m.id === preemptedId);
+            if (idx === -1) return prev;
+            const msg = prev[idx];
+            if (isTerminal(msg.phase)) return prev;
+            const updated = [...prev];
+            // Keep whatever in-depth streamed so far, marked complete (no perpetual spinner).
+            updated[idx] = {
+              ...msg,
+              phase: 'complete',
+              reasoning: '',
+              inDepth: msg.inDepth ? { ...msg.inDepth, status: 'complete' } : msg.inDepth,
+            };
+            return updated;
+          });
+        }
+      }
 
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
@@ -274,7 +315,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         answer: '',
         references: [],
         questionId: '',
-        isLoading: true,
+        phase: 'answering',
         error: null,
         reasoning: '',
       };
@@ -306,7 +347,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             inDepth: response.inDepth,
             questionId: response.messageId ?? response.questionId ?? '',
             resolvedModel: response.resolvedModel,
-            isLoading: false,
+            phase: 'complete',
           };
           return updated;
         });
@@ -331,7 +372,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], error: errMessage, isLoading: false };
+          updated[idx] = { ...updated[idx], error: errMessage, phase: 'error' };
           return updated;
         });
       };
@@ -354,7 +395,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             questionId: response.messageId ?? response.questionId ?? '',
             resolvedModel: response.resolvedModel,
             reasoning: '',
-            isLoading: true,
+            phase: 'validating',
           };
           return updated;
         });
@@ -365,6 +406,8 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
 
       const answerValidation = (response: AiSearchResponse) => {
         if (!isMountedRef.current) return;
+        // The answer + validation have landed; only in-depth remains. Moving to `settled` unlocks
+        // the composer AND makes this turn preemptable (submitQuestion reads the phase).
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
@@ -377,6 +420,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             blocks: response.blocks,
             confidence: response.confidence,
             answerValidation: response.answerValidation,
+            phase: 'settled',
             questionId: response.messageId ?? response.questionId ?? updated[idx].questionId,
             resolvedModel: response.resolvedModel ?? updated[idx].resolvedModel,
           };
@@ -393,6 +437,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           updated[idx] = {
             ...updated[idx],
             questionId: payload.messageId ?? updated[idx].questionId,
+            phase: 'settled',
             inDepth: payload.inDepth ?? { status: 'pending', answer: updated[idx].inDepth?.answer ?? '' },
           };
           return updated;
@@ -408,6 +453,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const current = updated[idx].inDepth?.answer ?? '';
           updated[idx] = {
             ...updated[idx],
+            phase: 'in-depth',
             inDepth: { status: 'pending', answer: stripInDepthHeader(current + token) },
           };
           return updated;
@@ -422,6 +468,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const updated = [...prev];
           updated[idx] = {
             ...updated[idx],
+            phase: 'complete',
             inDepth: { ...inDepth, answer: stripInDepthHeader(inDepth.answer ?? '') },
           };
           return updated;
@@ -434,8 +481,10 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
+          // The direct answer is still available; only the background in-depth failed → terminal.
           updated[idx] = {
             ...updated[idx],
+            phase: 'complete',
             inDepth: inDepth.status === 'failed' ? inDepth : { ...inDepth, status: 'failed' },
           };
           return updated;
@@ -510,13 +559,16 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
     };
   }, []);
 
-  // Only the last message can ever be loading; submitQuestion guards against
-  // concurrent submits via abortControllerRef, so checking just the tail is sound.
-  const isAnyLoading = messages.length > 0 && messages[messages.length - 1].isLoading;
+  // Only the last message can ever be in flight; a new turn either blocks (answer not yet settled)
+  // or preempts the trailing in-depth, so checking just the tail is sound. The composer locks only
+  // while the direct answer is being produced (answering/validating) — a settled answer unlocks it
+  // even while in-depth still streams.
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
+  const isAwaitingAnswer = lastMessage ? phaseIsAwaitingAnswer(lastMessage.phase) : false;
 
   return {
     messages,
-    isAnyLoading,
+    isAwaitingAnswer,
     submitQuestion,
     clearMessages,
     stopCurrent,

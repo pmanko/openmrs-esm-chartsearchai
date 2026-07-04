@@ -16,6 +16,7 @@ import AiFeedback from './ai-feedback.component';
 import AiTableBlockView from './ai-table-block.component';
 import MarkdownAnswer from './ai-markdown-answer.component';
 import { buildReferenceUrl, handleReferenceNavigate, isDrugReference } from './citation-chip.component';
+import { type TurnPhase, isTerminal } from '../hooks/turn-phase';
 import styles from './ai-response-panel.scss';
 
 interface AiResponsePanelProps {
@@ -25,7 +26,8 @@ interface AiResponsePanelProps {
   blocks?: AiBlock[];
   questionId: string;
   error: string | null;
-  isLoading: boolean;
+  /** The turn's lifecycle phase — drives which parts of the answer render (see {@link TurnPhase}). */
+  phase: TurnPhase;
   patientUuid: string;
   /** The backend model that produced this answer; shown as a subtle faded tag. */
   resolvedModel?: string;
@@ -238,7 +240,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   blocks,
   questionId,
   error,
-  isLoading,
+  phase,
   patientUuid,
   resolvedModel,
   confidence,
@@ -270,19 +272,21 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   // Normal combined team responses split after completion. Staged team responses split as soon
   // as the direct answer is complete, while the In-Depth section remains pending.
   const showSections =
-    Boolean(answer) && (Boolean(inDepth) || Boolean(answerValidation) || (!isLoading && Boolean(confidence)));
+    Boolean(answer) && (Boolean(inDepth) || Boolean(answerValidation) || (isTerminal(phase) && Boolean(confidence)));
   const sections = showSections ? splitSections(answer) : null;
 
   return (
-    <div className={styles.responseContainer}>
+    // data-turn-phase exposes the whole turn's lifecycle to the DOM so behavior is observable
+    // (cheap verification / e2e) rather than inferred from timing.
+    <div className={styles.responseContainer} data-turn-phase={phase}>
       {answer && !showSections && (
         <div className={styles.answerSection}>
-          {isLoading ? (
+          {phase === 'answering' ? (
             <p className={styles.answerText}>{answer}</p>
           ) : (
             <MarkdownAnswer answer={answer} references={references} patientUuid={patientUuid} />
           )}
-          {isLoading && <InlineLoading className={styles.streamingIndicator} />}
+          {phase === 'answering' && <InlineLoading className={styles.streamingIndicator} />}
         </div>
       )}
       {sections && (
@@ -295,34 +299,41 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
             references={references}
             patientUuid={patientUuid}
           />
-          {inDepth?.status === 'pending' && (
-            <div className={styles.csec} data-testid="section-in-depth">
-              <div className={styles.ctitle}>In Depth</div>
-              {inDepth.answer ? (
-                <div className={styles.ans}>
-                  <MarkdownAnswer answer={inDepth.answer} references={references} patientUuid={patientUuid} />
+          {/* Wrapper exposes the staged in-depth status to the DOM (pending | complete | failed) so
+              it is observable — the three inner renderings otherwise share one testid and can't be
+              told apart. display:contents keeps layout identical. */}
+          {inDepth && (
+            <div style={{ display: 'contents' }} data-indepth-status={inDepth.status}>
+              {inDepth.status === 'pending' && (
+                <div className={styles.csec} data-testid="section-in-depth">
+                  <div className={styles.ctitle}>In Depth</div>
+                  {inDepth.answer ? (
+                    <div className={styles.ans}>
+                      <MarkdownAnswer answer={inDepth.answer} references={references} patientUuid={patientUuid} />
+                    </div>
+                  ) : (
+                    <InlineLoading className={styles.streamingIndicator} description="Preparing in-depth..." />
+                  )}
                 </div>
-              ) : (
-                <InlineLoading className={styles.streamingIndicator} description="Preparing in-depth..." />
+              )}
+              {inDepth.status === 'failed' && (
+                <div className={styles.csec} data-testid="section-in-depth">
+                  <div className={styles.ctitle}>In Depth</div>
+                  <div className={`${styles.caveat} ${styles.caveatYellow}`}>
+                    {inDepth.error ?? 'In-Depth could not be completed.'}
+                  </div>
+                </div>
+              )}
+              {inDepth.status === 'complete' && inDepth.answer && (
+                <ConfidenceSection
+                  label="In Depth"
+                  body={inDepth.answer}
+                  section={confidence?.in_depth}
+                  references={references}
+                  patientUuid={patientUuid}
+                />
               )}
             </div>
-          )}
-          {inDepth?.status === 'failed' && (
-            <div className={styles.csec} data-testid="section-in-depth">
-              <div className={styles.ctitle}>In Depth</div>
-              <div className={`${styles.caveat} ${styles.caveatYellow}`}>
-                {inDepth.error ?? 'In-Depth could not be completed.'}
-              </div>
-            </div>
-          )}
-          {inDepth?.status === 'complete' && inDepth.answer && (
-            <ConfidenceSection
-              label="In Depth"
-              body={inDepth.answer}
-              section={confidence?.in_depth}
-              references={references}
-              patientUuid={patientUuid}
-            />
           )}
           {!inDepth && sections.inDepthBody && (
             <ConfidenceSection
@@ -336,7 +347,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         </div>
       )}
 
-      {(!isLoading || Boolean(inDepth)) &&
+      {(isTerminal(phase) || Boolean(inDepth)) &&
         blocks?.map((block, idx) =>
           block.kind === 'table' ? (
             <AiTableBlockView key={`block-${idx}`} block={block} references={references} patientUuid={patientUuid} />
@@ -414,7 +425,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         </div>
       )}
 
-      {answer && !isLoading && (
+      {answer && isTerminal(phase) && (
         <div className={styles.actionsRow}>
           <div className={styles.actionsLeft}>
             {questionId ? (

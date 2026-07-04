@@ -37,7 +37,7 @@ describe('AiResponsePanel reference links', () => {
         references={references}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -75,7 +75,7 @@ describe('AiResponsePanel reference links', () => {
         references={references}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -95,7 +95,7 @@ describe('AiResponsePanel reference links', () => {
         references={references}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -130,7 +130,7 @@ describe('AiResponsePanel reference links', () => {
         references={refs}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -153,7 +153,7 @@ describe('AiResponsePanel reference links', () => {
         references={refs}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -177,7 +177,7 @@ describe('AiResponsePanel reference links', () => {
         references={unknownRef}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -194,7 +194,7 @@ describe('AiResponsePanel reference links', () => {
         references={[]}
         questionId="test-question-id"
         error="Server error: 500"
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -230,7 +230,7 @@ describe('AiResponsePanel reference links', () => {
         blocks={blocks}
         questionId="q-blocks"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -263,7 +263,7 @@ describe('AiResponsePanel reference links', () => {
         blocks={blocks}
         questionId=""
         error={null}
-        isLoading={true}
+        phase="answering"
         patientUuid={patientUuid}
       />,
     );
@@ -279,7 +279,7 @@ describe('AiResponsePanel reference links', () => {
         references={[]}
         questionId="test-question-id"
         error={SESSION_EXPIRED_ERROR_CODE}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -296,7 +296,7 @@ describe('AiResponsePanel reference links', () => {
         references={[]}
         questionId="test-question-id"
         error="Connection lost"
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -317,7 +317,7 @@ describe('AiResponsePanel citation grounding', () => {
         references={[{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-101', date: '2025-01-15', grounded }]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -357,7 +357,7 @@ describe('AiResponsePanel drug-reference citations', () => {
         references={references}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -382,7 +382,7 @@ describe('AiResponsePanel drug-reference citations', () => {
         references={refs}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -409,7 +409,7 @@ describe('AiResponsePanel safety warnings', () => {
         ]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -434,7 +434,7 @@ describe('AiResponsePanel safety warnings', () => {
         ]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -452,7 +452,7 @@ describe('AiResponsePanel safety warnings', () => {
         safetyWarnings={[]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -468,7 +468,7 @@ describe('AiResponsePanel safety warnings', () => {
         safetyWarnings={[{ type: 'future-unknown-type', drug: 'Ibuprofen', detail: 'a new advisory kind' }]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -487,7 +487,7 @@ describe('AiResponsePanel safety warnings', () => {
         safetyWarnings={[{ type: 'overdose', drug: 'Ibuprofen', detail: 'exceeds the maximum' }]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -522,7 +522,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={true}
+        phase="answering"
         patientUuid={patientUuid}
       />,
     );
@@ -537,7 +537,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -552,7 +552,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -570,7 +570,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -589,7 +589,7 @@ describe('AiResponsePanel model tag', () => {
         references={[]}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
         resolvedModel="med-agent-team"
       />,
@@ -605,7 +605,7 @@ describe('AiResponsePanel model tag', () => {
         references={[]}
         questionId="q1"
         error={null}
-        isLoading={true}
+        phase="answering"
         patientUuid={patientUuid}
         resolvedModel="med-agent-team"
       />,
@@ -621,12 +621,52 @@ describe('AiResponsePanel model tag', () => {
         references={[]}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
 
     expect(screen.queryByText('med-agent-team')).not.toBeInTheDocument();
+  });
+});
+
+describe('AiResponsePanel staged in-depth status', () => {
+  // Two complementary DOM signals: data-turn-phase (the whole turn's coarse lifecycle) and
+  // data-indepth-status (the in-depth outcome). The three in-depth renderings otherwise share one
+  // testid, so these attributes are what makes the streaming/complete states distinguishable.
+  const stagedBase = {
+    answer: 'The patient is on metformin [1].',
+    references: [{ index: 1, resourceType: 'order', resourceUuid: 'u-1', date: '2025-01-01' }],
+    questionId: 'q1',
+    error: null,
+    patientUuid,
+    answerValidation: { status: 'checked' as const, label: 'Checked' },
+  };
+
+  it('exposes phase="in-depth" and data-indepth-status="pending" while the in-depth streams', () => {
+    const { container } = render(
+      <AiResponsePanel {...stagedBase} phase="in-depth" inDepth={{ status: 'pending', answer: 'streaming…' }} />,
+    );
+    expect(container.querySelector('[data-turn-phase="in-depth"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="pending"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="complete"]')).not.toBeInTheDocument();
+  });
+
+  it('exposes phase="complete" and data-indepth-status="complete" once the in-depth finishes', () => {
+    const { container } = render(
+      <AiResponsePanel {...stagedBase} phase="complete" inDepth={{ status: 'complete', answer: 'Full detail [1].' }} />,
+    );
+    expect(container.querySelector('[data-turn-phase="complete"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="complete"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="pending"]')).not.toBeInTheDocument();
+  });
+
+  it('exposes phase="settled" (composer already unlocked) before the first in-depth token', () => {
+    const { container } = render(
+      <AiResponsePanel {...stagedBase} phase="settled" inDepth={{ status: 'pending', answer: '' }} />,
+    );
+    expect(container.querySelector('[data-turn-phase="settled"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="pending"]')).toBeInTheDocument();
   });
 });
 
@@ -636,7 +676,7 @@ describe('AiResponsePanel per-section confidence', () => {
     references: [{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-101', date: '2025-11-24' }],
     questionId: 'q1',
     error: null,
-    isLoading: false,
+    phase: 'complete' as const,
     patientUuid,
   };
 
@@ -695,7 +735,7 @@ describe('AiResponsePanel per-section confidence', () => {
   });
 
   it('does not split into sections while the answer is still streaming', () => {
-    render(<AiResponsePanel {...baseProps} isLoading={true} confidence={{ answer: { level: 'red', note: 'x' } }} />);
+    render(<AiResponsePanel {...baseProps} phase="answering" confidence={{ answer: { level: 'red', note: 'x' } }} />);
     expect(screen.queryByTestId('section-answer')).not.toBeInTheDocument();
   });
 });

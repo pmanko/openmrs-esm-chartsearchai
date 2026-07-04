@@ -15,7 +15,7 @@ const seedSession = () =>
           references: [],
           safetyWarnings: [],
           questionId: '',
-          isLoading: false,
+          phase: 'complete',
           error: null,
           reasoning: '',
         },

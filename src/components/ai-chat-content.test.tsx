@@ -55,7 +55,7 @@ beforeEach(() => {
   mockUsePatient.mockReturnValue({ patient: { id: 'p1' }, isLoading: false });
   mockUseChartSearchAi.mockReturnValue({
     messages: [],
-    isAnyLoading: false,
+    isAwaitingAnswer: false,
     submitQuestion: mockSubmitQuestion,
     stopCurrent: mockStopCurrent,
     clearMessages: vi.fn(),
@@ -82,7 +82,7 @@ function message(overrides = {}) {
     answer: '',
     references: [],
     questionId: '',
-    isLoading: true,
+    phase: 'answering',
     error: null,
     reasoning: '',
     ...overrides,
@@ -93,7 +93,7 @@ describe('AiChatContent', () => {
   it('shows the live reasoning text while the model is thinking (no answer yet)', () => {
     mockUseChartSearchAi.mockReturnValue({
       messages: [message({ reasoning: 'The query asks about medications. Scanning drug orders.' })],
-      isAnyLoading: true,
+      isAwaitingAnswer: true,
       submitQuestion: mockSubmitQuestion,
       stopCurrent: mockStopCurrent,
       clearMessages: vi.fn(),
@@ -106,7 +106,7 @@ describe('AiChatContent', () => {
   it('hides the reasoning once answer text starts streaming', () => {
     mockUseChartSearchAi.mockReturnValue({
       messages: [message({ answer: 'Aspirin [1]', reasoning: 'Scanning drug orders.' })],
-      isAnyLoading: true,
+      isAwaitingAnswer: true,
       submitQuestion: mockSubmitQuestion,
       stopCurrent: mockStopCurrent,
       clearMessages: vi.fn(),
@@ -133,10 +133,10 @@ describe('AiChatContent', () => {
       expect(mockSubmitQuestion).not.toHaveBeenCalled();
     });
 
-    it('does not submit while a request is in flight', async () => {
+    it('disables the composer while awaiting the answer', async () => {
       mockUseChartSearchAi.mockReturnValue({
         messages: [],
-        isAnyLoading: true,
+        isAwaitingAnswer: true,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),
@@ -173,10 +173,10 @@ describe('AiChatContent', () => {
       expect(mockSubmitQuestion).not.toHaveBeenCalled();
     });
 
-    it('does not submit speech result when a request is in flight', () => {
+    it('does not submit speech result while awaiting the answer', () => {
       mockUseChartSearchAi.mockReturnValue({
         messages: [],
-        isAnyLoading: true,
+        isAwaitingAnswer: true,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),
@@ -187,24 +187,56 @@ describe('AiChatContent', () => {
     });
   });
 
+  // Interactive-first: once the answer + validation land (phase 'settled'), the composer unlocks
+  // even though in-depth is still streaming. A new question can then be asked, which preempts the
+  // trailing in-depth in the hook.
+  describe('interactive-first composer (in-depth streaming in background)', () => {
+    const settledWhileInDepth = () =>
+      mockUseChartSearchAi.mockReturnValue({
+        messages: [message({ answer: 'Aspirin [1].', phase: 'settled', inDepth: { status: 'pending', answer: '' } })],
+        isAwaitingAnswer: false,
+        submitQuestion: mockSubmitQuestion,
+        stopCurrent: mockStopCurrent,
+        clearMessages: vi.fn(),
+      });
+
+    it('keeps the composer enabled and shows Send (not Stop) once the answer settles', () => {
+      settledWhileInDepth();
+      render(<AiChatContent mode="workspace" patientUuid="p1" />);
+      expect(screen.getByRole('textbox')).toBeEnabled();
+      expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /stop/i })).not.toBeInTheDocument();
+    });
+
+    it('submits a new question while in-depth is still streaming (preempt path)', async () => {
+      settledWhileInDepth();
+      const user = userEvent.setup();
+      render(<AiChatContent mode="workspace" patientUuid="p1" />);
+      const input = screen.getByRole('textbox');
+      await user.type(input, 'And allergies?');
+      await user.keyboard('{Enter}');
+      expect(mockSubmitQuestion).toHaveBeenCalledWith('p1', 'And allergies?');
+    });
+  });
+
   describe('auto-scroll', () => {
     // Regression: when streaming ends, the AiResponsePanel mounts the references list
-    // and feedback widget in the same React commit that flips isAnyLoading to false,
+    // and feedback widget in the same React commit that moves the phase to 'complete',
     // growing the message past the history-area viewport. The scroll effect must fire
-    // on this transition so those new elements stay visible.
-    it('scrolls history area to bottom when isAnyLoading transitions to false', () => {
+    // on this phase transition so those new elements stay visible.
+    it('scrolls history area to bottom when the turn phase transitions to complete', () => {
       const streaming = {
         id: 'm1',
         question: 'Any allergies?',
         answer: 'partial',
         references: [],
         questionId: '',
-        isLoading: true,
+        phase: 'answering',
         error: null,
       };
       mockUseChartSearchAi.mockReturnValue({
         messages: [streaming],
-        isAnyLoading: true,
+        isAwaitingAnswer: true,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),
@@ -221,10 +253,10 @@ describe('AiChatContent', () => {
             ...streaming,
             answer: 'No known allergies.',
             references: [{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-1', date: '2026-01-01' }],
-            isLoading: false,
+            phase: 'complete',
           },
         ],
-        isAnyLoading: false,
+        isAwaitingAnswer: false,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),
@@ -235,8 +267,8 @@ describe('AiChatContent', () => {
     });
 
     // Regression: the live "Thinking..." reasoning streams before any answer text exists,
-    // so it changes neither `answer` nor `isAnyLoading`. If the scroll effect ignores
-    // reasoning, the growing scratchpad runs past the viewport and is clipped out of sight
+    // so it changes neither `answer` nor the phase (stays 'answering'). If the scroll effect
+    // ignores reasoning, the growing scratchpad runs past the viewport and is clipped out of sight
     // (it disappears behind the disclaimer). The effect must re-fire on each reasoning chunk.
     it('scrolls history area to bottom as reasoning streams (before any answer)', () => {
       const thinking = {
@@ -245,13 +277,13 @@ describe('AiChatContent', () => {
         answer: '',
         references: [],
         questionId: '',
-        isLoading: true,
+        phase: 'answering',
         error: null,
         reasoning: 'Scanning',
       };
       mockUseChartSearchAi.mockReturnValue({
         messages: [thinking],
-        isAnyLoading: true,
+        isAwaitingAnswer: true,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),
@@ -262,10 +294,10 @@ describe('AiChatContent', () => {
       Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1000 });
       log.scrollTop = 0;
 
-      // Only `reasoning` grows — answer stays empty, isAnyLoading stays true.
+      // Only `reasoning` grows — answer stays empty, phase stays 'answering'.
       mockUseChartSearchAi.mockReturnValue({
         messages: [{ ...thinking, reasoning: 'Scanning visits, then active problems, then medications…' }],
-        isAnyLoading: true,
+        isAwaitingAnswer: true,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),
@@ -296,11 +328,11 @@ describe('AiChatContent', () => {
               },
             ],
             questionId: 'q',
-            isLoading: false,
+            phase: 'complete',
             error: null,
           },
         ],
-        isAnyLoading: false,
+        isAwaitingAnswer: false,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),
@@ -343,12 +375,12 @@ describe('AiChatContent', () => {
             answer: 'Clinical context refreshed — the latest chart data is now available to the assistant.',
             references: [],
             questionId: '',
-            isLoading: false,
+            phase: 'complete',
             error: null,
             kind: 'system',
           },
         ],
-        isAnyLoading: false,
+        isAwaitingAnswer: false,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),

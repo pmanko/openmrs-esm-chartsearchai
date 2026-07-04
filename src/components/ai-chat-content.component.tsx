@@ -14,6 +14,7 @@ import {
 } from '@carbon/react/icons';
 import { Button, IconButton, InlineLoading, InlineNotification } from '@carbon/react';
 import { useChartSearchAi } from '../hooks/useChartSearchAi';
+import { isAwaitingAnswer as isPhaseAwaiting } from '../hooks/turn-phase';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { type ChartSearchAiConfig } from '../config-schema';
 import AiResponsePanel from './ai-response-panel.component';
@@ -47,7 +48,7 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const historyAreaRef = useRef<HTMLDivElement>(null);
 
-  const { messages, isAnyLoading, submitQuestion, stopCurrent, startNewChatSession, refreshClinicalContext } =
+  const { messages, isAwaitingAnswer, submitQuestion, stopCurrent, startNewChatSession, refreshClinicalContext } =
     useChartSearchAi(patientUuid);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -61,14 +62,14 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
       const existing = questionRef.current.trimEnd();
       const fullQuestion = existing ? existing + ' ' + transcript : transcript;
       const trimmed = fullQuestion.trim();
-      if (trimmed && patientUuid && !isAnyLoading) {
+      if (trimmed && patientUuid && !isAwaitingAnswer) {
         submitQuestion(patientUuid, trimmed);
         setQuestion('');
       } else {
         setQuestion(fullQuestion);
       }
     },
-    [patientUuid, isAnyLoading, submitQuestion],
+    [patientUuid, isAwaitingAnswer, submitQuestion],
   );
 
   const {
@@ -84,12 +85,12 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
     (e?: React.FormEvent) => {
       e?.preventDefault();
       const trimmedQuestion = question.trim();
-      if (!trimmedQuestion || !patientUuid || isAnyLoading) return;
+      if (!trimmedQuestion || !patientUuid || isAwaitingAnswer) return;
       clearSpeechError();
       submitQuestion(patientUuid, trimmedQuestion);
       setQuestion('');
     },
-    [question, patientUuid, isAnyLoading, submitQuestion, clearSpeechError],
+    [question, patientUuid, isAwaitingAnswer, submitQuestion, clearSpeechError],
   );
 
   const handleInputKeyDown = useCallback(
@@ -145,21 +146,29 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
   const lastAnswer = lastMessage?.answer ?? '';
   const lastReasoning = lastMessage?.reasoning ?? '';
+  // In-depth streams in the background after the answer settles; track it so its tokens keep the
+  // transcript scrolled to the bottom too.
+  const lastInDepth = lastMessage?.inDepth?.answer ?? '';
+  // The tail phase changes at every lifecycle transition (incl. terminal) — re-scroll on each so
+  // elements that mount on settle/complete (references, feedback) stay visible.
+  const lastPhase = lastMessage?.phase;
   useEffect(() => {
     if (historyAreaRef.current) {
       historyAreaRef.current.scrollTop = historyAreaRef.current.scrollHeight;
     }
-  }, [lastAnswer, lastReasoning, isAnyLoading]);
+  }, [lastAnswer, lastReasoning, lastInDepth, lastPhase]);
 
-  const hasCompletedAnswer = messages.some((m) => !m.isLoading && m.answer);
+  const hasCompletedAnswer = messages.some((m) => Boolean(m.answer) && !isPhaseAwaiting(m.phase));
 
-  const prevIsAnyLoadingRef = useRef(false);
+  // Return focus to the composer as soon as the answer SETTLES (so the next question can be typed
+  // while in-depth still streams), not after the whole turn (incl. in-depth) finishes.
+  const prevAwaitingRef = useRef(false);
   useEffect(() => {
-    if (prevIsAnyLoadingRef.current && !isAnyLoading) {
+    if (prevAwaitingRef.current && !isAwaitingAnswer) {
       inputRef.current?.focus();
     }
-    prevIsAnyLoadingRef.current = isAnyLoading;
-  }, [isAnyLoading]);
+    prevAwaitingRef.current = isAwaitingAnswer;
+  }, [isAwaitingAnswer]);
 
   const handleMicClick = useCallback(() => {
     if (isListening) {
@@ -302,12 +311,12 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
                   inDepth={msg.inDepth}
                   questionId={msg.questionId}
                   error={msg.error}
-                  isLoading={msg.isLoading}
+                  phase={msg.phase}
                   resolvedModel={msg.resolvedModel}
                   patientUuid={patientUuid ?? ''}
                   onFeedbackComplete={handleFeedbackComplete}
                 />
-                {msg.isLoading &&
+                {msg.phase === 'answering' &&
                   !msg.answer &&
                   (msg.reasoning ? (
                     <p className={styles.reasoningText}>{msg.reasoning}</p>
@@ -361,10 +370,10 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
           onKeyDown={handleInputKeyDown}
           placeholder={config.aiSearchPlaceholder}
           maxLength={config.maxQuestionLength}
-          disabled={isAnyLoading}
+          disabled={isAwaitingAnswer}
           autoFocus={mode === 'floating'}
         />
-        {isSpeechSupported && !isAnyLoading && (
+        {isSpeechSupported && !isAwaitingAnswer && (
           <button
             className={`${styles.micButton} ${isListening ? styles.micButtonActive : ''}`}
             onClick={handleMicClick}
@@ -376,7 +385,7 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
             {isListening ? <MicrophoneFilled size={20} /> : <Microphone size={20} />}
           </button>
         )}
-        {isAnyLoading ? (
+        {isAwaitingAnswer ? (
           <button
             className={styles.actionButton}
             onClick={stopCurrent}

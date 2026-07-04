@@ -31,7 +31,7 @@ describe('useChartSearchAi', () => {
   it('returns empty messages and not loading initially', () => {
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
     expect(result.current.messages).toEqual([]);
-    expect(result.current.isAnyLoading).toBe(false);
+    expect(result.current.isAwaitingAnswer).toBe(false);
   });
 
   it('hydrates chat history on mount and stores the server session uuid', async () => {
@@ -65,9 +65,9 @@ describe('useChartSearchAi', () => {
 
     expect(result.current.messages).toHaveLength(1);
     expect(result.current.messages[0].question).toBe('What meds?');
-    expect(result.current.messages[0].isLoading).toBe(true);
+    expect(result.current.messages[0].phase).toBe('answering');
     expect(result.current.messages[0].answer).toBe('');
-    expect(result.current.isAnyLoading).toBe(true);
+    expect(result.current.isAwaitingAnswer).toBe(true);
     expect(mockChatStream).toHaveBeenCalledWith(
       'patient-uuid',
       null,
@@ -130,7 +130,7 @@ describe('useChartSearchAi', () => {
     });
 
     expect(result.current.messages[0].answer).toBe('Hello world');
-    expect(result.current.messages[0].isLoading).toBe(true);
+    expect(result.current.messages[0].phase).toBe('answering');
   });
 
   it('finalizes last message on streaming done with messageId as questionId', async () => {
@@ -156,7 +156,7 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages[0].answer).toBe('Final answer.');
     expect(result.current.messages[0].references).toEqual(finalResponse.references);
     expect(result.current.messages[0].questionId).toBe('msg-final');
-    expect(result.current.messages[0].isLoading).toBe(false);
+    expect(result.current.messages[0].phase).toBe('complete');
   });
 
   it('carries blocks from streaming done onto the message', async () => {
@@ -236,8 +236,8 @@ describe('useChartSearchAi', () => {
     });
 
     expect(result.current.messages[0].error).toBe('Stream failed');
-    expect(result.current.messages[0].isLoading).toBe(false);
-    expect(result.current.isAnyLoading).toBe(false);
+    expect(result.current.messages[0].phase).toBe('error');
+    expect(result.current.isAwaitingAnswer).toBe(false);
   });
 
   it('clearMessages resets to empty array and aborts in-flight request', async () => {
@@ -258,7 +258,7 @@ describe('useChartSearchAi', () => {
     });
 
     expect(result.current.messages).toEqual([]);
-    expect(result.current.isAnyLoading).toBe(false);
+    expect(result.current.isAwaitingAnswer).toBe(false);
     expect(abortController.signal.aborted).toBe(true);
   });
 
@@ -293,7 +293,7 @@ describe('useChartSearchAi', () => {
 
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[0].answer).toBe('Answer.');
-    expect(result.current.messages[1].isLoading).toBe(false);
+    expect(result.current.messages[1].phase).toBe('complete');
     expect(result.current.messages[1].answer).toBe('Partial...');
     // The settled message keeps no leftover reasoning scratchpad (mirrors `done`).
     expect(result.current.messages[1].reasoning).toBe('');
@@ -438,7 +438,7 @@ describe('useChartSearchAi', () => {
     const notice = result.current.messages[0];
     expect(notice.kind).toBe('system');
     expect(notice.answer).toMatch(/clinical context refreshed/i);
-    expect(notice.isLoading).toBe(false);
+    expect(notice.phase).toBe('complete');
   });
 
   it('refreshClinicalContext rejects without dropping a notice when the refresh fails', async () => {
@@ -453,5 +453,138 @@ describe('useChartSearchAi', () => {
     ).rejects.toThrow('boom');
 
     expect(result.current.messages).toHaveLength(0);
+  });
+
+  // The single source of truth: one explicit `phase` per turn that mirrors the backend staged
+  // SSE events. Everything else (composer lock, section split, DOM signals) derives from it.
+  it('tracks the turn phase through the staged lifecycle', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q1?');
+    });
+    const cb = mockChatStream.mock.calls[0][3];
+    const phase = () => result.current.messages[0].phase;
+
+    expect(phase()).toBe('answering');
+
+    act(() => cb.onToken('Aspirin'));
+    expect(phase()).toBe('answering');
+
+    act(() => cb.onAnswerDone({ answer: 'Aspirin [1].', references: [], messageId: 'm-1' }));
+    expect(phase()).toBe('validating');
+
+    act(() =>
+      cb.onAnswerValidation({
+        answer: 'Aspirin [1].',
+        references: [],
+        answerValidation: { status: 'checked', label: 'Checked' },
+        messageId: 'm-1',
+      }),
+    );
+    expect(phase()).toBe('settled');
+
+    act(() => cb.onInDepthToken('In-depth detail.'));
+    expect(phase()).toBe('in-depth');
+
+    act(() => cb.onInDepthDone({ status: 'complete', answer: 'In-depth detail.' }));
+    expect(phase()).toBe('complete');
+  });
+
+  it('moves to error phase when answer generation fails', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q?');
+    });
+    act(() => mockChatStream.mock.calls[0][3].onError('Stream failed'));
+
+    expect(result.current.messages[0].phase).toBe('error');
+  });
+
+  // Interactive-first: the answer settles (answer + validation) BEFORE the terminal `done`, while
+  // in-depth is still streaming. isAwaitingAnswer must drop then (unlocking the composer) even
+  // though the turn is still streaming through to `done`.
+  it('drops isAwaitingAnswer once the answer settles while in-depth still streams', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q1?');
+    });
+    const cb = mockChatStream.mock.calls[0][3];
+
+    // Still producing the answer → awaiting.
+    expect(result.current.isAwaitingAnswer).toBe(true);
+    expect(result.current.messages[0].phase).toBe('answering');
+
+    act(() => {
+      cb.onAnswerDone({ answer: 'A1', references: [], messageId: 'm-1' });
+      cb.onAnswerValidation({
+        answer: 'A1 checked',
+        references: [],
+        answerValidation: { status: 'checked', label: 'Checked' },
+        messageId: 'm-1',
+      });
+      cb.onInDepthToken('In-depth detail.');
+    });
+
+    // Answer settled + in-depth streaming: composer unlocks, but the turn is still streaming.
+    expect(result.current.isAwaitingAnswer).toBe(false);
+    expect(result.current.messages[0].phase).toBe('in-depth');
+
+    act(() => {
+      cb.onDone({ answer: 'A1 checked', references: [], session: 's', messageId: 'm-1' });
+    });
+    expect(result.current.messages[0].phase).toBe('complete');
+  });
+
+  it('preempts the trailing in-depth when a new question is submitted after the answer settles', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q1?');
+    });
+    const firstController = mockChatStream.mock.calls[0][4] as AbortController;
+    const cb1 = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      cb1.onAnswerDone({ answer: 'A1', references: [], messageId: 'm-1' });
+      cb1.onAnswerValidation({
+        answer: 'A1 checked',
+        references: [],
+        answerValidation: { status: 'checked', label: 'Checked' },
+        messageId: 'm-1',
+      });
+      cb1.onInDepthToken('Partial in-depth.');
+    });
+
+    // New question while in-depth streams → preempt the first turn and start the second.
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q2?');
+    });
+
+    expect(mockChatStream).toHaveBeenCalledTimes(2);
+    expect(firstController.signal.aborted).toBe(true);
+    expect(result.current.messages).toHaveLength(2);
+
+    // Q1 is finalized, keeping the partial in-depth (marked complete, no perpetual spinner).
+    const q1 = result.current.messages[0];
+    expect(q1.phase).toBe('complete');
+    expect(q1.answer).toBe('A1 checked');
+    expect(q1.inDepth).toEqual({ status: 'complete', answer: 'Partial in-depth.' });
+
+    // Q2 is the new in-flight turn.
+    const q2 = result.current.messages[1];
+    expect(q2.question).toBe('Q2?');
+    expect(q2.phase).toBe('answering');
+    expect(result.current.isAwaitingAnswer).toBe(true);
   });
 });
