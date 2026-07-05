@@ -22,8 +22,8 @@ When the backend's optional [drug-reference feature](https://github.com/openmrs/
 
 This frontend requires the [Chart Search AI backend module](https://github.com/openmrs/openmrs-module-chartsearchai), which uses a RAG (Retrieval Augmented Generation) architecture:
 
-1. **Retrieval** -- patient records are embedded with all-MiniLM-L6-v2 (ONNX, CPU) and narrowed to the top-K most relevant via cosine similarity.
-2. **Generation** -- the filtered records are sent to a local GGUF LLM (default: Llama 3.3 8B via llama.cpp) with a system prompt that produces cited, structured answers.
+1. **Retrieval** -- delegated to the [querystore module](https://github.com/openmrs/openmrs-module-querystore), which embeds patient records (e5-base-v2, ONNX) and narrows them to the top-K most relevant via cosine similarity.
+2. **Generation** -- the retrieved records are sent to a configured remote OpenAI-compatible LLM endpoint (chartsearchai has no bundled local LLM) with a system prompt that produces cited, structured answers.
 
 See the [backend README](https://github.com/openmrs/openmrs-module-chartsearchai#readme) for full setup instructions, model downloads, and global property configuration.
 
@@ -59,12 +59,14 @@ All endpoints are served by the backend module under `/ws/rest/v1/chartsearchai/
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/search` | Synchronous search (returns complete answer) |
-| POST | `/search/stream` | SSE streaming search (tokens streamed in real-time) |
+| POST | `/chat` | Synchronous chat turn (returns the complete answer) |
+| POST | `/chat/stream` | SSE streaming chat turn (tokens streamed in real time; multi-turn via `session`) |
+| GET | `/chat` | Hydrate a patient's active session + prior messages |
+| POST | `/chat/new` | Close the active session and open a fresh one |
 
-Request body: `{ "patient": "<uuid>", "question": "<text>" }`
+Request body: `{ "patient": "<uuid>", "question": "<text>", "session": "<uuid, optional>" }`
 
-Response:
+Response (`POST /chat`, and the final `done` event of `POST /chat/stream`):
 ```json
 {
   "answer": "The patient is currently on metformin [1] and lisinopril [2]...",
@@ -73,11 +75,19 @@ Response:
     { "index": 1, "resourceType": "order", "resourceUuid": "5946f880-b197-400b-9caa-a3c661d71165", "date": "2025-12-01" },
     { "index": 2, "resourceType": "order", "resourceUuid": "a8f5f167-4ee2-4d2a-94f9-3f3f86d2e9b6", "date": "2025-11-15" }
   ],
-  "safetyWarnings": []
+  "safetyWarnings": [],
+  "session": "session-uuid",
+  "messageId": "assistant-message-uuid"
 }
 ```
 
 `references[].resourceUuid` is the cited record's UUID (used to locate and highlight the chart row). `safetyWarnings` (each `{ type, drug, detail }`) is always present and empty unless the backend's optional drug-reference feature is enabled; the panel renders any entries as chips below the answer.
+
+When `POST /chat/stream` is sent with `staged: "true"` (only for models the backend advertises as
+staged-capable via `GET /endpoints`), it emits a richer sequence instead of a single `done`:
+`answer_done` (direct answer complete) → optional `answer_validation` (self-check result) →
+`indepth_pending` / `indepth_token`* → `indepth_done` or `indepth_error` → `done`. See the
+[backend README's streaming chat docs](https://github.com/openmrs/openmrs-module-chartsearchai#streaming-chat-sse) for the full event reference.
 
 The required privilege is **AI Query Patient Data**.
 
