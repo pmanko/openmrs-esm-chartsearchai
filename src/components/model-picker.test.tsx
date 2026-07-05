@@ -68,15 +68,15 @@ const CURATED_DATA = {
       reachable: true,
       current: false,
       models: [
-        { id: 'med-agent-team-high-validated', displayName: 'high-validated', loaded: false },
-        { id: 'med-agent-team-med-validated', displayName: 'med-validated', loaded: false },
-        { id: 'med-agent-team-low-validated-12b', displayName: 'low-validated-12b', loaded: false },
-        { id: 'med-agent-team-parity', displayName: 'parity', loaded: false },
-        { id: 'single-12b-checked', displayName: 'single 12b checked', loaded: false },
-        { id: 'single-e4b-checked', displayName: 'single e4b checked', loaded: false },
-        { id: 'single-a4b-checked', displayName: 'single a4b checked', loaded: false },
-        { id: 'med-agent-team-low', displayName: 'low', loaded: false },
-        { id: 'med-agent-team-high', displayName: 'high', loaded: false },
+        { id: 'med-agent-team-high-validated', displayName: 'high-validated', loaded: false, staged: true },
+        { id: 'med-agent-team-med-validated', displayName: 'med-validated', loaded: false, staged: true },
+        { id: 'med-agent-team-low-validated-12b', displayName: 'low-validated-12b', loaded: false, staged: true },
+        { id: 'med-agent-team-parity', displayName: 'parity', loaded: false, staged: false },
+        { id: 'single-12b-checked', displayName: 'single 12b checked', loaded: false, staged: true },
+        { id: 'single-e4b-checked', displayName: 'single e4b checked', loaded: false, staged: true },
+        { id: 'single-a4b-checked', displayName: 'single a4b checked', loaded: false, staged: true },
+        { id: 'med-agent-team-low', displayName: 'low', loaded: false, staged: false },
+        { id: 'med-agent-team-high', displayName: 'high', loaded: false, staged: false },
       ],
     },
   ],
@@ -202,6 +202,7 @@ describe('ModelPicker curated sections', () => {
       expect(chatSessionStore.getState().selectedBackend).toEqual({
         endpointUrl: HUB,
         modelName: 'med-agent-team-high-validated',
+        staged: true,
       }),
     );
     expect(onSwitched).toHaveBeenCalledWith('med-agent-team-high-validated');
@@ -216,6 +217,7 @@ describe('ModelPicker curated sections', () => {
       expect(chatSessionStore.getState().selectedBackend).toEqual({
         endpointUrl: HUB,
         modelName: 'single-e4b-checked',
+        staged: true,
       }),
     );
   });
@@ -234,6 +236,7 @@ describe('ModelPicker curated sections', () => {
       expect(chatSessionStore.getState().selectedBackend).toEqual({
         endpointUrl: HUB,
         modelName: 'single-e4b-checked',
+        staged: true,
       }),
     );
 

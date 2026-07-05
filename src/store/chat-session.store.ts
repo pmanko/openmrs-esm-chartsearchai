@@ -15,8 +15,11 @@ export interface ChatSessionState {
    * per-request override `{endpointUrl, modelName}` on each chat post. `null` =
    * use chartsearchai's config-controlled global default (which the picker shows
    * with a faded "default" tag). The picker NEVER mutates the global default.
+   * `staged` is the model's advertised capability (from GET /endpoints), not a
+   * guess from its name — it decides whether the chat hook expects the staged
+   * answer/validation/in-depth SSE phase events or a single completion.
    */
-  selectedBackend: { endpointUrl: string; modelName: string } | null;
+  selectedBackend: { endpointUrl: string; modelName: string; staged: boolean } | null;
 }
 
 export const chatSessionStore = createGlobalStore<ChatSessionState>('chartsearchai-chat-session', {

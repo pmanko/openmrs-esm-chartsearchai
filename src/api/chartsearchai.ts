@@ -151,14 +151,6 @@ export interface AiSearchError {
   error: string;
 }
 
-function shouldUseStagedInDepth(modelName: string): boolean {
-  return (
-    modelName.startsWith('single-') ||
-    (modelName.startsWith('med-agent-team-') && !modelName.startsWith('med-agent-team-parity')) ||
-    modelName.startsWith('answer:')
-  );
-}
-
 /**
  * Pre-warms the server-side LLM prompt cache for the given patient. Fire-and-forget;
  * fired when the chart is opened so the first AI query skips full prefill cost. Pass
@@ -439,7 +431,7 @@ export function chatPatientChartStream(
     onError: (error: string) => void;
   },
   abortController?: AbortController,
-  backend?: { endpointUrl: string; modelName: string } | null,
+  backend?: { endpointUrl: string; modelName: string; staged: boolean } | null,
 ): void {
   const url = `${window.openmrsBase}${BASE_PATH}/chat/stream`;
   const body: Record<string, string> = { patient: patientUuid, question };
@@ -451,7 +443,7 @@ export function chatPatientChartStream(
   if (backend) {
     body.endpointUrl = backend.endpointUrl;
     body.modelName = backend.modelName;
-    if (shouldUseStagedInDepth(backend.modelName)) {
+    if (backend.staged) {
       body.staged = 'true';
     }
   }
@@ -743,6 +735,13 @@ export interface EndpointModel {
   id: string;
   displayName: string;
   loaded: boolean;
+  /**
+   * Whether this model is served by the hub's staged pipeline (answer ->
+   * validation -> in-depth, delivered as separate SSE phase events) versus a
+   * single-completion response. Drives the picker's staged-UX decision —
+   * replaces the old name-prefix guess (shouldUseStagedInDepth).
+   */
+  staged: boolean;
 }
 
 /** A picker section: one configured endpoint with its live model list. */

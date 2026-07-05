@@ -588,6 +588,7 @@ describe('chatPatientChartStream', () => {
     chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, {
       endpointUrl: 'http://hub/v1/chat/completions',
       modelName: 'med-agent-team',
+      staged: false,
     });
     await flushPromises();
 
@@ -668,6 +669,7 @@ describe('chatPatientChartStream', () => {
     chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, {
       endpointUrl: 'http://hub/v1/chat/completions',
       modelName: 'med-agent-team-high-validated',
+      staged: true,
     });
     await flushPromises();
 
@@ -700,7 +702,7 @@ describe('chatPatientChartStream', () => {
     expect(cb.onError).not.toHaveBeenCalled();
   });
 
-  it('requests staged flow for checked product profile ids', async () => {
+  it('requests staged flow when the caller marks the backend staged (capability, not name)', async () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
@@ -709,6 +711,7 @@ describe('chatPatientChartStream', () => {
     chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, {
       endpointUrl: 'http://hub/v1/chat/completions',
       modelName: 'single-12b-checked',
+      staged: true,
     });
     await flushPromises();
 
@@ -716,5 +719,21 @@ describe('chatPatientChartStream', () => {
       modelName: 'single-12b-checked',
       staged: 'true',
     });
+  });
+
+  it('does not request staged flow for an id that would match the old name-prefix guess but is marked unstaged', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(mockStreamResponse(['event:done\ndata: {"answer":"ok","references":[]}\n\n']));
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, {
+      endpointUrl: 'http://hub/v1/chat/completions',
+      modelName: 'single-12b-checked',
+      staged: false,
+    });
+    await flushPromises();
+
+    expect(sentBody()).not.toHaveProperty('staged');
   });
 });

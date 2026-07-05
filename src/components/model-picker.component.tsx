@@ -107,23 +107,27 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   // What the chat will actually use: the per-session selection, else the default.
   // Memoised so it's referentially stable across renders (it feeds the `sections`
   // useMemo deps); the whole-store subscription re-renders this on every store change.
-  const configuredEffective = useMemo(
-    () =>
-      selectedBackend ??
-      (defaultBackend && defaultBackend.endpointUrl && defaultBackend.modelName
-        ? { endpointUrl: defaultBackend.endpointUrl, modelName: defaultBackend.modelName }
-        : null),
-    [selectedBackend, defaultBackend],
-  );
+  const configuredEffective = useMemo(() => {
+    if (selectedBackend) {
+      return selectedBackend;
+    }
+    if (!defaultBackend?.endpointUrl || !defaultBackend?.modelName) {
+      return null;
+    }
+    const ep = (data?.endpoints ?? []).find((e) => e.url === defaultBackend.endpointUrl);
+    const staged = ep?.models.find((m) => m.id === defaultBackend.modelName)?.staged ?? false;
+    return { endpointUrl: defaultBackend.endpointUrl, modelName: defaultBackend.modelName, staged };
+  }, [selectedBackend, defaultBackend, data]);
 
   const curatedLocationById = useMemo(() => {
     const endpoints = (data?.endpoints ?? []).filter((ep) => ep.reachable);
-    const locations = new Map<string, { endpointUrl: string; modelName: string }>();
+    const locations = new Map<string, { endpointUrl: string; modelName: string; staged: boolean }>();
     for (const group of CURATED_GROUPS) {
       for (const item of group.items) {
         const endpoint = endpoints.find((ep) => ep.models.some((m) => m.id === item.id));
         if (endpoint) {
-          locations.set(item.id, { endpointUrl: endpoint.url, modelName: item.id });
+          const model = endpoint.models.find((m) => m.id === item.id);
+          locations.set(item.id, { endpointUrl: endpoint.url, modelName: item.id, staged: model?.staged ?? false });
         }
       }
     }
@@ -155,10 +159,11 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   // global-switch endpoint, so the config default is never mutated.
   const handleSelect = useCallback(
     (url: string, modelId: string) => {
-      chatSessionStore.setState({ selectedBackend: { endpointUrl: url, modelName: modelId } });
+      const staged = curatedLocationById.get(modelId)?.staged ?? false;
+      chatSessionStore.setState({ selectedBackend: { endpointUrl: url, modelName: modelId, staged } });
       onSwitched?.(modelId);
     },
-    [onSwitched],
+    [onSwitched, curatedLocationById],
   );
 
   // One radio group per CURATED category (AI Team / Single models), listing only the

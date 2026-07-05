@@ -407,7 +407,9 @@ describe('useChartSearchAi', () => {
 
   it('passes the picker selection as the per-request backend override', async () => {
     mockChatStream.mockImplementation(() => {});
-    chatSessionStore.setState({ selectedBackend: { endpointUrl: 'http://hub/v1', modelName: 'med-agent-team' } });
+    chatSessionStore.setState({
+      selectedBackend: { endpointUrl: 'http://hub/v1', modelName: 'med-agent-team', staged: true },
+    });
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
     await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
@@ -421,7 +423,7 @@ describe('useChartSearchAi', () => {
       'What meds?',
       expect.any(Object),
       expect.any(AbortController),
-      { endpointUrl: 'http://hub/v1', modelName: 'med-agent-team' },
+      { endpointUrl: 'http://hub/v1', modelName: 'med-agent-team', staged: true },
     );
   });
 

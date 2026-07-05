@@ -22,7 +22,7 @@ const seedSession = () =>
       ],
     },
     sessionUuidByPatient: { 'patient-1': 'server-session-handle-1' },
-    selectedBackend: { endpointUrl: 'http://localhost:1234/v1', modelName: 'user-1-picked-model' },
+    selectedBackend: { endpointUrl: 'http://localhost:1234/v1', modelName: 'user-1-picked-model', staged: false },
   });
 
 beforeEach(() => {
