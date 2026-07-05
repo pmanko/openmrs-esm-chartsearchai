@@ -24,8 +24,8 @@ const HUB = 'http://hub/v1/chat/completions';
 
 // A realistic /endpoints payload: LM Studio + llama-server carry team-internal component
 // models (qwen/medgemma/gemma-31b), quant/non-validated variants, and raw GGUF single models;
-// Med Agent Hub carries the product team ids plus answer:* single-model ids. The curated picker
-// must surface ONLY the validation/product arms (4 AI-team + 8 hub-routed singles), located by id
+// Med Agent Hub carries the product team ids plus checked single-model profile ids. The curated picker
+// must surface ONLY the validation/product arms (4 AI-team + 3 checked singles), located by id
 // across endpoints, and hide everything else.
 const CURATED_DATA = {
   endpoints: [
@@ -72,46 +72,9 @@ const CURATED_DATA = {
         { id: 'med-agent-team-med-validated', displayName: 'med-validated', loaded: false },
         { id: 'med-agent-team-low-validated-12b', displayName: 'low-validated-12b', loaded: false },
         { id: 'med-agent-team-parity', displayName: 'parity', loaded: false },
-        {
-          id: 'answer:gemma-e2b@synthesis-answer~enforce~temp0',
-          displayName: 'answer gemma-e2b',
-          loaded: false,
-        },
-        {
-          id: 'answer:gemma-e4b@synthesis-answer~enforce~temp0',
-          displayName: 'answer gemma-e4b',
-          loaded: false,
-        },
-        {
-          id: 'answer:gemma-4-12b@synthesis-answer~enforce~temp0',
-          displayName: 'answer gemma-4-12b',
-          loaded: false,
-        },
-        {
-          id: 'answer:gemma-26b@synthesis-answer~enforce~temp0',
-          displayName: 'answer gemma-26b',
-          loaded: false,
-        },
-        {
-          id: 'answer:medgemma-1.5-4b@synthesis-answer~enforce~temp0',
-          displayName: 'answer medgemma-1.5-4b',
-          loaded: false,
-        },
-        {
-          id: 'answer:medgemma-27b@synthesis-answer~enforce~temp0',
-          displayName: 'answer medgemma-27b',
-          loaded: false,
-        },
-        {
-          id: 'answer:qwen2.5-14b@synthesis-answer~enforce~temp0',
-          displayName: 'answer qwen2.5-14b',
-          loaded: false,
-        },
-        {
-          id: 'answer:qwen2.5-32b@synthesis-answer~enforce~temp0',
-          displayName: 'answer qwen2.5-32b',
-          loaded: false,
-        },
+        { id: 'single-12b-checked', displayName: 'single 12b checked', loaded: false },
+        { id: 'single-e4b-checked', displayName: 'single e4b checked', loaded: false },
+        { id: 'single-a4b-checked', displayName: 'single a4b checked', loaded: false },
         { id: 'med-agent-team-low', displayName: 'low', loaded: false },
         { id: 'med-agent-team-high', displayName: 'high', loaded: false },
       ],
@@ -191,7 +154,7 @@ describe('ModelPicker curated sections', () => {
     expect(screen.queryByRole('menuitem', { name: /llama-server/i })).not.toBeInTheDocument();
   });
 
-  it('lists exactly the 12 validation arms with human labels', async () => {
+  it('lists exactly the curated validation profiles with human labels', async () => {
     mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
     await openMenu(/Med \(validated\)/i);
@@ -200,18 +163,13 @@ describe('ModelPicker curated sections', () => {
       /Med \(validated\)/i,
       /Low \(validated\)/i,
       /Parity/i,
-      /Gemma 2B/i,
-      /Gemma 4B/i,
-      /Gemma 12B/i,
-      /Gemma 26B/i,
-      /MedGemma 1\.5 \(4B\)/i,
-      /MedGemma 27B/i,
-      /Qwen 2\.5 14B/i,
-      /Qwen 2\.5 32B/i,
+      /Gemma 12B Checked/i,
+      /Gemma E4B Checked/i,
+      /Gemma A4B Checked/i,
     ]) {
       expect(screen.getByRole('menuitemradio', { name })).toBeInTheDocument();
     }
-    expect(screen.getAllByRole('menuitemradio')).toHaveLength(12);
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(7);
   });
 
   it('hides team-internal orchestrators, quant variants, non-curated qwen, and LM Studio', async () => {
@@ -249,17 +207,39 @@ describe('ModelPicker curated sections', () => {
     expect(onSwitched).toHaveBeenCalledWith('med-agent-team-high-validated');
   });
 
-  it('selecting a single model resolves its med-agent-hub answer path by id', async () => {
+  it('selecting a single model resolves its med-agent-hub profile id', async () => {
     mockFetch.mockResolvedValue(CURATED_DATA);
     render(<ModelPicker />);
     await openMenu(/Med \(validated\)/i);
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Gemma 12B/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Gemma E4B Checked/i }));
     await waitFor(() =>
       expect(chatSessionStore.getState().selectedBackend).toEqual({
         endpointUrl: HUB,
-        modelName: 'answer:gemma-4-12b@synthesis-answer~enforce~temp0',
+        modelName: 'single-e4b-checked',
       }),
     );
+  });
+
+  it('normalizes a raw E4B backend default to the checked hub profile', async () => {
+    mockFetch.mockResolvedValue({
+      ...CURATED_DATA,
+      current: { endpointUrl: LM, modelName: 'google/gemma-4-e4b' },
+    });
+    render(<ModelPicker />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Single models · Gemma E4B Checked/i })).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(chatSessionStore.getState().selectedBackend).toEqual({
+        endpointUrl: HUB,
+        modelName: 'single-e4b-checked',
+      }),
+    );
+
+    await openMenu(/Gemma E4B Checked/i);
+    expect(screen.getByRole('menuitemradio', { name: /Gemma E4B Checked/i })).toBeChecked();
+    expect(screen.queryByRole('menuitemradio', { name: /google\/gemma-4-e4b/i })).not.toBeInTheDocument();
   });
 
   it('portals the menu outside the picker subtree so the chat panel cannot clip it', async () => {

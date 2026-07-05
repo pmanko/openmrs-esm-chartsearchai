@@ -43,7 +43,7 @@ interface AiResponsePanelProps {
 type Translate = (key: string, fallback: string) => string;
 
 interface GroundedTag {
-  type: 'green' | 'red' | 'purple';
+  type: 'green' | 'red' | 'purple' | 'blue';
   text: string;
   title: string;
 }
@@ -57,15 +57,22 @@ interface GroundedTag {
  * i18next-parser can statically extract them; a dynamic {@code t(key)} would be
  * dropped from translations/en.json by the `extract-translations` check.
  */
-function groundedTag(grounded: boolean | null | undefined, t: Translate): GroundedTag | null {
-  if (grounded === true) {
+function groundedTag(ref: AiReference, t: Translate): GroundedTag | null {
+  if (ref.groundingStatus === 'checking') {
+    return {
+      type: 'blue',
+      text: t('groundingChecking', 'Checking'),
+      title: t('groundingCheckingTitle', 'Source resolved; support check is still running.'),
+    };
+  }
+  if (ref.grounded === true || ref.groundingStatus === 'verified') {
     return {
       type: 'green',
       text: t('grounded', 'Verified'),
       title: t('groundedTitle', 'Supported by the cited record.'),
     };
   }
-  if (grounded === false) {
+  if (ref.grounded === false || ref.groundingStatus === 'unsupported') {
     return {
       type: 'red',
       text: t('notGrounded', 'Unsupported'),
@@ -113,6 +120,43 @@ function safetyWarningTag(type: string, t: Translate): { tagType: 'red' | 'magen
 function stripCitations(answer: string): string {
   return answer.replace(/\s?\[\d+(?:\s*,\s*\d+)*\]/g, '').trim();
 }
+
+function evidenceTitle(ref: AiReference): string {
+  const text = (ref.sourceText ?? '').replace(/^\s*\(\d{4}-\d{2}-\d{2}\)\s*/, '').trim();
+  if (text) {
+    return text.length > 88 ? `${text.slice(0, 85)}...` : text;
+  }
+  return `${ref.resourceType || 'Record'} ${ref.index}`;
+}
+
+const EvidenceCard: React.FC<{ refItem: AiReference; patientUuid: string; t: Translate }> = ({
+  refItem,
+  patientUuid,
+  t,
+}) => {
+  const url = buildReferenceUrl(refItem, patientUuid);
+  const title = evidenceTitle(refItem);
+  const meta = [`[${refItem.index}]`, refItem.resourceType, refItem.date].filter(Boolean).join(' · ');
+  const source = (refItem.sourceText ?? '').trim();
+  return (
+    <div className={styles.evidenceCard}>
+      <div className={styles.evidenceMeta}>{meta}</div>
+      {url ? (
+        <a className={styles.evidenceLink} href={url} onClick={(e) => handleReferenceNavigate(e, url, refItem)}>
+          {title}
+        </a>
+      ) : (
+        <div className={styles.evidenceTitleText}>{title}</div>
+      )}
+      {source && <div className={styles.evidenceSource}>{source}</div>}
+      {refItem.resourceUuid && (
+        <div className={styles.evidenceUuid}>
+          {t('sourceUuid', 'UUID')}: {refItem.resourceUuid}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /** Solid confidence pill matching the validate dashboard's chip (label + color per level). */
 const CONF: Record<string, [string, string]> = {
@@ -274,6 +318,9 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   const showSections =
     Boolean(answer) && (Boolean(inDepth) || Boolean(answerValidation) || (isTerminal(phase) && Boolean(confidence)));
   const sections = showSections ? splitSections(answer) : null;
+  const resolvedEvidence = references.filter((ref) => Boolean((ref.sourceText ?? '').trim()));
+  const shownEvidence = resolvedEvidence.slice(0, 5);
+  const overflowEvidence = resolvedEvidence.slice(5);
 
   return (
     // data-turn-phase exposes the whole turn's lifecycle to the DOM so behavior is observable
@@ -372,7 +419,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               const label = drugReference
                 ? `[${ref.index}] ${t('drugReferenceLabel', 'Drug reference')}`
                 : `[${ref.index}] ${ref.resourceType} — ${ref.date}`;
-              const g = drugReference ? referenceTag(t) : groundedTag(ref.grounded, t);
+              const g = drugReference ? referenceTag(t) : groundedTag(ref, t);
               // Tooltip via a native-title wrapper rather than Tag's deprecated `title` prop.
               // Rendered as a sibling of the link (Carbon Tag is a <div>) so the metadata
               // badge is not nested in, or part of, the navigation click target.
@@ -398,6 +445,27 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {resolvedEvidence.length > 0 && (
+        <div className={styles.evidenceSection}>
+          <div className={styles.evidenceSectionTitle}>{t('evidenceUsed', 'Evidence Used')}</div>
+          <div className={styles.evidenceGrid}>
+            {shownEvidence.map((ref) => (
+              <EvidenceCard key={`evidence-${ref.index}`} refItem={ref} patientUuid={patientUuid} t={t} />
+            ))}
+          </div>
+          {overflowEvidence.length > 0 && (
+            <details className={styles.evidenceMore}>
+              <summary>{t('showAllEvidence', 'show all evidence')}</summary>
+              <div className={styles.evidenceGrid}>
+                {overflowEvidence.map((ref) => (
+                  <EvidenceCard key={`evidence-more-${ref.index}`} refItem={ref} patientUuid={patientUuid} t={t} />
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 

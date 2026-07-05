@@ -19,6 +19,8 @@ export interface AiReference {
    */
   resourceUuid: string;
   date: string;
+  /** Resolved source record text, when supplied by the hub staged path. */
+  sourceText?: string;
   /**
    * Citation grounding verdict from the backend: true = the cited record
    * supports the claim, false = it does not, null/absent = unverified
@@ -26,6 +28,11 @@ export interface AiReference {
    * never as "verified".
    */
   grounded?: boolean | null;
+  /**
+   * Lifecycle/status for citation grounding. `checking` means the backend has resolved
+   * the source record but final support verification is still running.
+   */
+  groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked';
 }
 
 /**
@@ -146,6 +153,7 @@ export interface AiSearchError {
 
 function shouldUseStagedInDepth(modelName: string): boolean {
   return (
+    modelName.startsWith('single-') ||
     (modelName.startsWith('med-agent-team-') && !modelName.startsWith('med-agent-team-parity')) ||
     modelName.startsWith('answer:')
   );

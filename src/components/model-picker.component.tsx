@@ -11,8 +11,9 @@ import styles from './model-picker.scss';
  * Curated picker contents — the published validation arms only, in two plain-language groups.
  * Models are matched by id (env-agnostic) against whatever endpoint /endpoints reports serving
  * them, so this works locally and on the cloud regardless of the registered endpoint URLs.
- * Product single-model choices route through med-agent-hub answer:* ids so they get the same
- * temporal facts, deterministic gate, staged validation, and In-Depth tail as the team choices.
+ * Product single-model choices route through med-agent-hub profile ids so they get the same
+ * temporal facts, deterministic gate, staged validation, and In-Depth tail without exposing
+ * low-level answer:/indepth-only: leg ids in the clinician-facing picker.
  * Anything not listed (raw component models, quant variants, the LM Studio MLX line) is
  * intentionally hidden from the chat picker.
  */
@@ -29,17 +30,32 @@ const CURATED_GROUPS: Array<{ label: string; items: Array<{ id: string; label: s
   {
     label: 'Single models',
     items: [
-      { id: 'answer:gemma-e2b@synthesis-answer~enforce~temp0', label: 'Gemma 2B' },
-      { id: 'answer:gemma-e4b@synthesis-answer~enforce~temp0', label: 'Gemma 4B' },
-      { id: 'answer:gemma-4-12b@synthesis-answer~enforce~temp0', label: 'Gemma 12B' },
-      { id: 'answer:gemma-26b@synthesis-answer~enforce~temp0', label: 'Gemma 26B' },
-      { id: 'answer:medgemma-1.5-4b@synthesis-answer~enforce~temp0', label: 'MedGemma 1.5 (4B)' },
-      { id: 'answer:medgemma-27b@synthesis-answer~enforce~temp0', label: 'MedGemma 27B' },
-      { id: 'answer:qwen2.5-14b@synthesis-answer~enforce~temp0', label: 'Qwen 2.5 14B' },
-      { id: 'answer:qwen2.5-32b@synthesis-answer~enforce~temp0', label: 'Qwen 2.5 32B' },
+      { id: 'single-12b-checked', label: 'Gemma 12B Checked' },
+      { id: 'single-e4b-checked', label: 'Gemma E4B Checked' },
+      { id: 'single-a4b-checked', label: 'Gemma A4B Checked' },
     ],
   },
 ];
+
+// Raw backend model ids that older/local defaults may still point at. The picker is product-facing,
+// so normalize those implementation ids to the checked hub profiles before display and request send.
+const RAW_MODEL_PROFILE_ALIASES = new Map<string, string>([
+  ['gemma-4-12b', 'single-12b-checked'],
+  ['google/gemma-4-12b', 'single-12b-checked'],
+  ['google/gemma-3-12b', 'single-12b-checked'],
+  ['gemma-e4b', 'single-e4b-checked'],
+  ['gemma-e4b-q8', 'single-e4b-checked'],
+  ['google/gemma-4-e4b', 'single-e4b-checked'],
+  ['gemma-26b', 'single-a4b-checked'],
+  ['google/gemma-4-26b-a4b', 'single-a4b-checked'],
+]);
+
+function profileAliasFor(modelName: string | null | undefined): string | null {
+  if (!modelName) {
+    return null;
+  }
+  return RAW_MODEL_PROFILE_ALIASES.get(modelName.trim().toLowerCase()) ?? null;
+}
 
 interface ModelPickerProps {
   /** Called when the selection changes — lets the parent react if needed. */
@@ -91,7 +107,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   // What the chat will actually use: the per-session selection, else the default.
   // Memoised so it's referentially stable across renders (it feeds the `sections`
   // useMemo deps); the whole-store subscription re-renders this on every store change.
-  const effective = useMemo(
+  const configuredEffective = useMemo(
     () =>
       selectedBackend ??
       (defaultBackend && defaultBackend.endpointUrl && defaultBackend.modelName
@@ -99,6 +115,41 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
         : null),
     [selectedBackend, defaultBackend],
   );
+
+  const curatedLocationById = useMemo(() => {
+    const endpoints = (data?.endpoints ?? []).filter((ep) => ep.reachable);
+    const locations = new Map<string, { endpointUrl: string; modelName: string }>();
+    for (const group of CURATED_GROUPS) {
+      for (const item of group.items) {
+        const endpoint = endpoints.find((ep) => ep.models.some((m) => m.id === item.id));
+        if (endpoint) {
+          locations.set(item.id, { endpointUrl: endpoint.url, modelName: item.id });
+        }
+      }
+    }
+    return locations;
+  }, [data]);
+
+  const effective = useMemo(() => {
+    if (!configuredEffective) {
+      return null;
+    }
+    if (curatedLocationById.has(configuredEffective.modelName)) {
+      return configuredEffective;
+    }
+    const alias = profileAliasFor(configuredEffective.modelName);
+    return (alias && curatedLocationById.get(alias)) || configuredEffective;
+  }, [configuredEffective, curatedLocationById]);
+
+  useEffect(() => {
+    if (!configuredEffective || !effective) {
+      return;
+    }
+    if (configuredEffective.endpointUrl === effective.endpointUrl && configuredEffective.modelName === effective.modelName) {
+      return;
+    }
+    chatSessionStore.setState({ selectedBackend: effective });
+  }, [configuredEffective, effective]);
 
   // Selecting a model writes the per-session selection — it does NOT call the
   // global-switch endpoint, so the config default is never mutated.
@@ -141,7 +192,12 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
           const id = item as string;
           let label = labelById.get(id) ?? id;
           // Faded tag on the config-controlled global default.
-          if (defaultBackend && defaultBackend.endpointUrl === urlById.get(id) && defaultBackend.modelName === id) {
+          const defaultAlias = profileAliasFor(defaultBackend?.modelName);
+          if (
+            defaultBackend &&
+            ((defaultBackend.endpointUrl === urlById.get(id) && defaultBackend.modelName === id) ||
+              defaultAlias === id)
+          ) {
             label = `${label} ${t('defaultTag', '(default)')}`;
           }
           return label;
@@ -170,7 +226,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   if (effective) {
     const group = CURATED_GROUPS.find((g) => g.items.some((it) => it.id === effective.modelName));
     const item = group?.items.find((it) => it.id === effective.modelName);
-    triggerLabel = group && item ? `${group.label} · ${item.label}` : effective.modelName;
+    triggerLabel = group && item ? `${group.label} · ${item.label}` : t('chooseModel', 'Choose model');
   }
 
   return (

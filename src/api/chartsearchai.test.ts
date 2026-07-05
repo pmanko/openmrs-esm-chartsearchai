@@ -700,7 +700,7 @@ describe('chatPatientChartStream', () => {
     expect(cb.onError).not.toHaveBeenCalled();
   });
 
-  it('requests staged flow for dynamic product answer model ids', async () => {
+  it('requests staged flow for checked product profile ids', async () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
@@ -708,12 +708,12 @@ describe('chatPatientChartStream', () => {
 
     chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, {
       endpointUrl: 'http://hub/v1/chat/completions',
-      modelName: 'answer:gemma-4-12b@synthesis-date-output-contract~enforce',
+      modelName: 'single-12b-checked',
     });
     await flushPromises();
 
     expect(sentBody()).toMatchObject({
-      modelName: 'answer:gemma-4-12b@synthesis-date-output-contract~enforce',
+      modelName: 'single-12b-checked',
       staged: 'true',
     });
   });

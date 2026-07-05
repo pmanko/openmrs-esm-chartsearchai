@@ -68,6 +68,34 @@ describe('AiResponsePanel reference links', () => {
     expect(diagnosisLink).toHaveAttribute('href', `/openmrs/spa/patient/${patientUuid}/chart/Visits`);
   });
 
+  it('renders resolved hub references as evidence tiles with source text', () => {
+    render(
+      <AiResponsePanel
+        answer="The last visit was documented on 2026-01-26 [4]."
+        references={[
+          {
+            index: 4,
+            resourceType: 'encounter',
+            resourceUuid: 'enc-4',
+            date: '2026-01-26',
+            sourceText: 'Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower',
+          },
+        ]}
+        questionId="test-question-id"
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Evidence Used')).toBeInTheDocument();
+    expect(screen.getByText('[4] · encounter · 2026-01-26')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/UUID: enc-4/)).toBeInTheDocument();
+  });
+
   it('passes the resource UUID (not a numeric id) to highlightReference when a citation is clicked', () => {
     render(
       <AiResponsePanel
@@ -310,11 +338,23 @@ describe('AiResponsePanel reference links', () => {
 describe('AiResponsePanel citation grounding', () => {
   const answer = 'The patient has a finding [1].';
 
-  function renderWithGrounded(grounded: boolean | null) {
+  function renderWithGrounded(
+    grounded: boolean | null,
+    groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked',
+  ) {
     render(
       <AiResponsePanel
         answer={answer}
-        references={[{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-101', date: '2025-01-15', grounded }]}
+        references={[
+          {
+            index: 1,
+            resourceType: 'obs',
+            resourceUuid: 'uuid-101',
+            date: '2025-01-15',
+            grounded,
+            groundingStatus,
+          },
+        ]}
         questionId="q"
         error={null}
         phase="complete"
@@ -344,6 +384,13 @@ describe('AiResponsePanel citation grounding', () => {
     expect(screen.queryByText('Unsupported')).not.toBeInTheDocument();
     // plain inline citation, no warning glyph
     expect(screen.getByRole('link', { name: '1' })).toBeInTheDocument();
+  });
+
+  it('shows a checking badge while citation grounding is pending', () => {
+    renderWithGrounded(null, 'checking');
+    expect(screen.getByText('Checking')).toBeInTheDocument();
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unsupported')).not.toBeInTheDocument();
   });
 });
 
