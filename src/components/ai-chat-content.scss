@@ -55,12 +55,6 @@
   flex-shrink: 0;
 }
 
-.refreshNotice {
-  margin: 0 layout.$spacing-05 layout.$spacing-03;
-  max-width: none;
-  flex-shrink: 0;
-}
-
 .newChatLabel {
   margin-left: layout.$spacing-02;
   @include type.type-style('body-compact-01');
@@ -135,29 +129,6 @@
   border-radius: 0.25rem 1rem 1rem 1rem;
   padding: layout.$spacing-04 layout.$spacing-05;
   max-width: 95%;
-}
-
-// In-thread system notice (e.g. "clinical context refreshed"): a centered,
-// faded divider in the conversation flow — distinct from the Q+A bubbles.
-.systemNotice {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    border-top: 1px solid colors.$gray-20;
-  }
-}
-
-.systemNoticeText {
-  @include type.type-style('label-01');
-  color: colors.$gray-50;
-  font-style: italic;
-  padding: 0 layout.$spacing-03;
 }
 
 .modelPickerRow {

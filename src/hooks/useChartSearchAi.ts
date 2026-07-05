@@ -11,7 +11,6 @@ import {
   type ChatHistoryMessage,
   chatPatientChartStream,
   fetchChatHistory,
-  refreshChartSnapshot,
   startNewChat,
 } from '../api/chartsearchai';
 import { chatSessionStore } from '../store/chat-session.store';
@@ -46,12 +45,6 @@ export interface ChatMessage {
   answerValidation?: AiAnswerValidation;
   /** Staged team In-Depth state attached to this assistant turn. */
   inDepth?: AiInDepth;
-  /**
-   * A `'system'` message is an in-thread notice (e.g. "clinical context
-   * refreshed") rather than a Q+A turn. Such rows carry only `answer` text and
-   * are rendered as a subtle inline divider, not a chat bubble.
-   */
-  kind?: 'system';
 }
 
 interface UseChartSearchAiReturn {
@@ -70,12 +63,6 @@ interface UseChartSearchAiReturn {
    * fresh one. Use for the "New chat" button.
    */
   startNewChatSession: (patientUuid: string) => void;
-  /**
-   * Rebuild the patient's chart snapshot server-side, keeping the current
-   * conversation. Use for the "Refresh clinical context" button. Resolves on
-   * success, rejects on failure so the caller can surface feedback.
-   */
-  refreshClinicalContext: (patientUuid: string) => Promise<void>;
 }
 
 function generateId(): string {
@@ -130,6 +117,7 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
       if (pending) {
         pending.answer = m.content;
         pending.blocks = m.blocks;
+        pending.safetyWarnings = m.safetyWarnings;
         pending.confidence = m.confidence;
         pending.answerValidation = m.answerValidation;
         pending.inDepth = m.inDepth;
@@ -245,30 +233,6 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       .catch((err) => {
         console.warn('[useChartSearchAi] startNewChat failed', err);
       });
-  }, []);
-
-  const refreshClinicalContext = useCallback(async (patientUuid: string) => {
-    // Keeps the transcript; the server rebuilds the chart snapshot for the
-    // existing session. Update the (unchanged) session uuid defensively.
-    const response = await refreshChartSnapshot(patientUuid);
-    if (!isMountedRef.current) return;
-    if (response?.session) {
-      setSessionUuid(patientUuid, response.session);
-    }
-    // Drop an in-thread system notice so the refresh is visible in the
-    // conversation flow (rendered as a subtle inline divider, not a bubble).
-    const notice: ChatMessage = {
-      id: generateId(),
-      question: '',
-      answer: 'Clinical context refreshed — the latest chart data is now available to the assistant.',
-      references: [],
-      questionId: '',
-      phase: 'complete',
-      error: null,
-      reasoning: '',
-      kind: 'system',
-    };
-    updateMessages(patientUuid, (prev) => [...prev, notice]);
   }, []);
 
   const submitQuestion = useCallback(
@@ -577,6 +541,5 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
     clearMessages,
     stopCurrent,
     startNewChatSession,
-    refreshClinicalContext,
   };
 }

@@ -41,7 +41,6 @@ const mockUseSpeechRecognition = useSpeechRecognition as Mock;
 let mockSubmitQuestion: Mock;
 let mockStopCurrent: Mock;
 let mockStartNewChatSession: Mock;
-let mockRefreshClinicalContext: Mock;
 let speechCallback: ((transcript: string) => void) | null;
 
 beforeEach(() => {
@@ -49,7 +48,6 @@ beforeEach(() => {
   mockSubmitQuestion = vi.fn();
   mockStopCurrent = vi.fn();
   mockStartNewChatSession = vi.fn();
-  mockRefreshClinicalContext = vi.fn().mockResolvedValue(undefined);
   speechCallback = null;
   mockUseConfig.mockReturnValue({ aiSearchPlaceholder: 'Ask AI...', maxQuestionLength: 1000 });
   mockUsePatient.mockReturnValue({ patient: { id: 'p1' }, isLoading: false });
@@ -60,7 +58,6 @@ beforeEach(() => {
     stopCurrent: mockStopCurrent,
     clearMessages: vi.fn(),
     startNewChatSession: mockStartNewChatSession,
-    refreshClinicalContext: mockRefreshClinicalContext,
   });
   mockUseSpeechRecognition.mockImplementation((onResult) => {
     speechCallback = onResult;
@@ -343,7 +340,7 @@ describe('AiChatContent', () => {
       expect(screen.getByTestId('ai-response-safety')).toHaveTextContent('contraindication:Ibuprofen');
     });
   });
-  describe('header controls (reset / refresh / maximize)', () => {
+  describe('header controls (new chat / maximize)', () => {
     // New chat must be available even on an empty chat, before any conversation
     // has started.
     it('renders the New chat button even with no messages and calls startNewChatSession on click', async () => {
@@ -352,53 +349,6 @@ describe('AiChatContent', () => {
       const newChat = screen.getByRole('button', { name: /new chat/i });
       await user.click(newChat);
       expect(mockStartNewChatSession).toHaveBeenCalledWith('p1');
-    });
-
-    it('renders the Refresh clinical context button and refreshes on click', async () => {
-      const user = userEvent.setup();
-      render(<AiChatContent mode="floating" patientUuid="p1" onClose={vi.fn()} />);
-      const refresh = screen.getByRole('button', { name: /refresh clinical context/i });
-      await user.click(refresh);
-      // Success feedback is an in-thread system notice the hook appends (see the
-      // hook test); the component raises a banner only on failure. So on success
-      // we assert the refresh fired but NO error banner is shown.
-      expect(mockRefreshClinicalContext).toHaveBeenCalledWith('p1');
-      expect(screen.queryByText(/could not refresh clinical context/i)).not.toBeInTheDocument();
-    });
-
-    it('renders an in-thread system notice (not a chat bubble) for a system message', () => {
-      mockUseChartSearchAi.mockReturnValue({
-        messages: [
-          {
-            id: 'sys-1',
-            question: '',
-            answer: 'Clinical context refreshed — the latest chart data is now available to the assistant.',
-            references: [],
-            questionId: '',
-            phase: 'complete',
-            error: null,
-            kind: 'system',
-          },
-        ],
-        isAwaitingAnswer: false,
-        submitQuestion: mockSubmitQuestion,
-        stopCurrent: mockStopCurrent,
-        clearMessages: vi.fn(),
-        startNewChatSession: mockStartNewChatSession,
-        refreshClinicalContext: mockRefreshClinicalContext,
-      });
-      render(<AiChatContent mode="workspace" patientUuid="p1" />);
-      expect(screen.getByRole('status')).toHaveTextContent(/clinical context refreshed/i);
-      // A system notice is not a Q+A turn, so it must not mount an answer panel.
-      expect(screen.queryByTestId('ai-response')).not.toBeInTheDocument();
-    });
-
-    it('surfaces an error notice when the refresh fails', async () => {
-      mockRefreshClinicalContext.mockRejectedValueOnce(new Error('boom'));
-      const user = userEvent.setup();
-      render(<AiChatContent mode="floating" patientUuid="p1" onClose={vi.fn()} />);
-      await user.click(screen.getByRole('button', { name: /refresh clinical context/i }));
-      expect(await screen.findByText(/could not refresh clinical context/i)).toBeInTheDocument();
     });
 
     it('shows the maximize control only when onToggleExpand is provided, and toggles it', async () => {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useConfig } from '@openmrs/esm-framework';
 import { useChartSearchAi } from './useChartSearchAi';
-import { chatPatientChartStream, fetchChatHistory, refreshChartSnapshot, startNewChat } from '../api/chartsearchai';
+import { chatPatientChartStream, fetchChatHistory, startNewChat } from '../api/chartsearchai';
 import { chatSessionStore } from '../store/chat-session.store';
 
 const mockUseConfig = useConfig as Mock;
@@ -10,13 +10,11 @@ const mockUseConfig = useConfig as Mock;
 vi.mock('../api/chartsearchai', () => ({
   chatPatientChartStream: vi.fn(),
   fetchChatHistory: vi.fn(),
-  refreshChartSnapshot: vi.fn(),
   startNewChat: vi.fn(),
 }));
 
 const mockChatStream = chatPatientChartStream as Mock;
 const mockFetchHistory = fetchChatHistory as Mock;
-const mockRefreshSnapshot = refreshChartSnapshot as Mock;
 const mockStartNewChat = startNewChat as Mock;
 
 beforeEach(() => {
@@ -219,6 +217,31 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages[0].answer).toBe('See table.');
     expect(result.current.messages[0].blocks).toHaveLength(1);
     expect(result.current.messages[0].blocks?.[0].title).toBe('Medications');
+  });
+
+  it('hydrates safetyWarnings from chat history rows so reloads restore the safety chips', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-sw',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'Is ibuprofen safe?', createdAt: 1 },
+        {
+          messageId: 'a-1',
+          role: 'assistant',
+          content: 'Ibuprofen is an option [1].',
+          safetyWarnings: [
+            { type: 'contraindication', drug: 'Ibuprofen', detail: 'the patient has a recorded allergy to Ibuprofen' },
+          ],
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].safetyWarnings).toEqual([
+      { type: 'contraindication', drug: 'Ibuprofen', detail: 'the patient has a recorded allergy to Ibuprofen' },
+    ]);
   });
 
   it('sets error on streaming onError', async () => {
@@ -425,36 +448,6 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       { endpointUrl: 'http://hub/v1', modelName: 'med-agent-team', staged: true },
     );
-  });
-
-  it('refreshClinicalContext appends an in-thread system notice on success', async () => {
-    mockRefreshSnapshot.mockResolvedValue({ session: 'srv-session-1' });
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
-
-    await act(async () => {
-      await result.current.refreshClinicalContext('patient-uuid');
-    });
-
-    expect(result.current.messages).toHaveLength(1);
-    const notice = result.current.messages[0];
-    expect(notice.kind).toBe('system');
-    expect(notice.answer).toMatch(/clinical context refreshed/i);
-    expect(notice.phase).toBe('complete');
-  });
-
-  it('refreshClinicalContext rejects without dropping a notice when the refresh fails', async () => {
-    mockRefreshSnapshot.mockRejectedValueOnce(new Error('boom'));
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
-
-    await expect(
-      act(async () => {
-        await result.current.refreshClinicalContext('patient-uuid');
-      }),
-    ).rejects.toThrow('boom');
-
-    expect(result.current.messages).toHaveLength(0);
   });
 
   // The single source of truth: one explicit `phase` per turn that mirrors the backend staged

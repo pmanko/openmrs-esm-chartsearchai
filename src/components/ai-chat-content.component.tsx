@@ -1,18 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConfig, usePatient } from '@openmrs/esm-framework';
-import {
-  Add,
-  Close,
-  Maximize,
-  Microphone,
-  MicrophoneFilled,
-  Minimize,
-  Renew,
-  Send,
-  StopFilled,
-} from '@carbon/react/icons';
-import { Button, IconButton, InlineLoading, InlineNotification } from '@carbon/react';
+import { Add, Close, Maximize, Microphone, MicrophoneFilled, Minimize, Send, StopFilled } from '@carbon/react/icons';
+import { Button, IconButton, InlineLoading } from '@carbon/react';
 import { useChartSearchAi } from '../hooks/useChartSearchAi';
 import { isAwaitingAnswer as isPhaseAwaiting } from '../hooks/turn-phase';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
@@ -48,11 +38,8 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const historyAreaRef = useRef<HTMLDivElement>(null);
 
-  const { messages, isAwaitingAnswer, submitQuestion, stopCurrent, startNewChatSession, refreshClinicalContext } =
+  const { messages, isAwaitingAnswer, submitQuestion, stopCurrent, startNewChatSession } =
     useChartSearchAi(patientUuid);
-
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshNotice, setRefreshNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const questionRef = useRef(question);
   questionRef.current = question;
@@ -185,29 +172,9 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
   const handleNewChat = useCallback(() => {
     if (!patientUuid) return;
     startNewChatSession(patientUuid);
-    setRefreshNotice(null);
     setQuestion('');
     inputRef.current?.focus();
   }, [patientUuid, startNewChatSession]);
-
-  const handleRefreshContext = useCallback(async () => {
-    if (!patientUuid || isRefreshing) return;
-    setIsRefreshing(true);
-    setRefreshNotice(null);
-    try {
-      // On success the hook drops an in-thread system notice into the
-      // conversation flow, so we don't raise the banner here. The banner is
-      // reserved for the error case (a failed refresh has no in-thread row).
-      await refreshClinicalContext(patientUuid);
-    } catch {
-      setRefreshNotice({
-        kind: 'error',
-        text: t('clinicalContextRefreshFailed', 'Could not refresh clinical context'),
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [patientUuid, isRefreshing, refreshClinicalContext, t]);
 
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
@@ -227,16 +194,6 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
             {t('aiChartSearch', 'AI Chart Search')}
           </span>
           <span className={styles.panelHeaderActions}>
-            <IconButton
-              kind="ghost"
-              size="sm"
-              align="bottom"
-              label={t('refreshClinicalContext', 'Refresh clinical context')}
-              onClick={handleRefreshContext}
-              disabled={!patientUuid || isRefreshing}
-            >
-              <Renew size={16} />
-            </IconButton>
             <IconButton
               kind="ghost"
               size="sm"
@@ -266,15 +223,6 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
       )}
       {mode === 'workspace' && (
         <div className={styles.workspaceActions}>
-          <Button
-            kind="ghost"
-            size="sm"
-            renderIcon={Renew}
-            onClick={handleRefreshContext}
-            disabled={!patientUuid || isRefreshing}
-          >
-            {t('refreshClinicalContext', 'Refresh clinical context')}
-          </Button>
           <Button kind="ghost" size="sm" renderIcon={Add} onClick={handleNewChat} disabled={!patientUuid}>
             {t('newChat', 'New chat')}
           </Button>
@@ -290,43 +238,35 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
           <p className={styles.infoText}>{t('noPatientSelected', 'No patient selected')}</p>
         )}
 
-        {messages.map((msg) =>
-          msg.kind === 'system' ? (
-            // In-thread system notice (e.g. context refreshed) — a subtle
-            // inline divider in the conversation flow, not a Q+A bubble.
-            <div key={msg.id} className={styles.systemNotice} role="status">
-              <span className={styles.systemNoticeText}>{msg.answer}</span>
+        {messages.map((msg) => (
+          <div key={msg.id} className={styles.messagePair}>
+            <div className={styles.questionBubble}>{msg.question}</div>
+            <div className={styles.answerBubble}>
+              <AiResponsePanel
+                answer={msg.answer}
+                references={msg.references}
+                safetyWarnings={msg.safetyWarnings}
+                blocks={msg.blocks}
+                confidence={msg.confidence}
+                answerValidation={msg.answerValidation}
+                inDepth={msg.inDepth}
+                questionId={msg.questionId}
+                error={msg.error}
+                phase={msg.phase}
+                resolvedModel={msg.resolvedModel}
+                patientUuid={patientUuid ?? ''}
+                onFeedbackComplete={handleFeedbackComplete}
+              />
+              {msg.phase === 'answering' &&
+                !msg.answer &&
+                (msg.reasoning ? (
+                  <p className={styles.reasoningText}>{msg.reasoning}</p>
+                ) : (
+                  <InlineLoading description={t('thinkingEllipsis', 'Thinking...')} />
+                ))}
             </div>
-          ) : (
-            <div key={msg.id} className={styles.messagePair}>
-              <div className={styles.questionBubble}>{msg.question}</div>
-              <div className={styles.answerBubble}>
-                <AiResponsePanel
-                  answer={msg.answer}
-                  references={msg.references}
-                  safetyWarnings={msg.safetyWarnings}
-                  blocks={msg.blocks}
-                  confidence={msg.confidence}
-                  answerValidation={msg.answerValidation}
-                  inDepth={msg.inDepth}
-                  questionId={msg.questionId}
-                  error={msg.error}
-                  phase={msg.phase}
-                  resolvedModel={msg.resolvedModel}
-                  patientUuid={patientUuid ?? ''}
-                  onFeedbackComplete={handleFeedbackComplete}
-                />
-                {msg.phase === 'answering' &&
-                  !msg.answer &&
-                  (msg.reasoning ? (
-                    <p className={styles.reasoningText}>{msg.reasoning}</p>
-                  ) : (
-                    <InlineLoading description={t('thinkingEllipsis', 'Thinking...')} />
-                  ))}
-              </div>
-            </div>
-          ),
-        )}
+          </div>
+        ))}
       </div>
 
       {hasCompletedAnswer && (
@@ -344,16 +284,6 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
             ? t('microphonePermissionDenied', 'Microphone access was denied. Please allow microphone permissions.')
             : t('speechRecognitionError', 'Speech recognition failed. Please try again.')}
         </p>
-      )}
-
-      {refreshNotice && (
-        <InlineNotification
-          className={styles.refreshNotice}
-          kind={refreshNotice.kind}
-          lowContrast
-          title={refreshNotice.text}
-          onCloseButtonClick={() => setRefreshNotice(null)}
-        />
       )}
 
       <div className={styles.modelPickerRow}>

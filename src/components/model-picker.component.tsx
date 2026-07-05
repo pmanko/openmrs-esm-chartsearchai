@@ -149,7 +149,10 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     if (!configuredEffective || !effective) {
       return;
     }
-    if (configuredEffective.endpointUrl === effective.endpointUrl && configuredEffective.modelName === effective.modelName) {
+    if (
+      configuredEffective.endpointUrl === effective.endpointUrl &&
+      configuredEffective.modelName === effective.modelName
+    ) {
       return;
     }
     chatSessionStore.setState({ selectedBackend: effective });
@@ -200,8 +203,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
           const defaultAlias = profileAliasFor(defaultBackend?.modelName);
           if (
             defaultBackend &&
-            ((defaultBackend.endpointUrl === urlById.get(id) && defaultBackend.modelName === id) ||
-              defaultAlias === id)
+            ((defaultBackend.endpointUrl === urlById.get(id) && defaultBackend.modelName === id) || defaultAlias === id)
           ) {
             label = `${label} ${t('defaultTag', '(default)')}`;
           }
