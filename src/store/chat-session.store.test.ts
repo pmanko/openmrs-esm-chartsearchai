@@ -17,7 +17,6 @@ const seedSession = () =>
           questionId: '',
           phase: 'complete',
           error: null,
-          reasoning: '',
         },
       ],
     },

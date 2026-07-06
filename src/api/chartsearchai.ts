@@ -184,12 +184,9 @@ export function chatPatientChartStream(
   question: string,
   callbacks: {
     onSession: (uuid: string) => void;
-    onThinking?: (chunk: string) => void;
-    onToken: (token: string) => void;
     onAnswerDone?: (response: AiSearchResponse) => void;
     onAnswerValidation?: (response: AiSearchResponse) => void;
     onInDepthPending?: (payload: { messageId?: string; inDepth?: AiInDepth }) => void;
-    onInDepthToken?: (token: string) => void;
     onInDepthDone?: (inDepth: AiInDepth) => void;
     onInDepthError?: (inDepth: AiInDepth) => void;
     onDone: (response: AiSearchResponse) => void;
@@ -274,11 +271,7 @@ export function chatPatientChartStream(
           return;
         }
         const data = dataLines.join('\n');
-        if (eventType === 'token') {
-          callbacks.onToken(data);
-        } else if (eventType === 'thinking') {
-          callbacks.onThinking?.(data);
-        } else if (eventType === 'answer_done') {
+        if (eventType === 'answer_done') {
           try {
             const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
             callbacks.onAnswerDone?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
@@ -298,8 +291,6 @@ export function chatPatientChartStream(
           } catch {
             callbacks.onError('Failed to parse in-depth pending response');
           }
-        } else if (eventType === 'indepth_token') {
-          callbacks.onInDepthToken?.(data);
         } else if (eventType === 'indepth_done') {
           try {
             callbacks.onInDepthDone?.(JSON.parse(data) as AiInDepth);

@@ -128,13 +128,10 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
     prevMessagesLengthRef.current = messages.length;
   }, [messages.length]);
 
-  // Re-scrolls per chunk and again when streaming ends — references/feedback mount in that final commit and grow the message past the viewport.
-  // Tracks `reasoning` too: it streams before any answer text exists, so without it the live "Thinking..." scratchpad grows past the viewport and is clipped out of sight.
+  // Re-scrolls when the answer grows and again when streaming ends — references/feedback mount in that final commit and grow the message past the viewport.
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
   const lastAnswer = lastMessage?.answer ?? '';
-  const lastReasoning = lastMessage?.reasoning ?? '';
-  // In-depth streams in the background after the answer settles; track it so its tokens keep the
-  // transcript scrolled to the bottom too.
+  // In-depth arrives after the answer settles; track it so it keeps the transcript scrolled to the bottom too.
   const lastInDepth = lastMessage?.inDepth?.answer ?? '';
   // The tail phase changes at every lifecycle transition (incl. terminal) — re-scroll on each so
   // elements that mount on settle/complete (references, feedback) stay visible.
@@ -143,7 +140,7 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
     if (historyAreaRef.current) {
       historyAreaRef.current.scrollTop = historyAreaRef.current.scrollHeight;
     }
-  }, [lastAnswer, lastReasoning, lastInDepth, lastPhase]);
+  }, [lastAnswer, lastInDepth, lastPhase]);
 
   const hasCompletedAnswer = messages.some((m) => Boolean(m.answer) && !isPhaseAwaiting(m.phase));
 
@@ -257,13 +254,9 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
                 patientUuid={patientUuid ?? ''}
                 onFeedbackComplete={handleFeedbackComplete}
               />
-              {msg.phase === 'answering' &&
-                !msg.answer &&
-                (msg.reasoning ? (
-                  <p className={styles.reasoningText}>{msg.reasoning}</p>
-                ) : (
-                  <InlineLoading description={t('thinkingEllipsis', 'Thinking...')} />
-                ))}
+              {msg.phase === 'answering' && !msg.answer && (
+                <InlineLoading description={t('thinkingEllipsis', 'Thinking...')} />
+              )}
             </div>
           </div>
         ))}

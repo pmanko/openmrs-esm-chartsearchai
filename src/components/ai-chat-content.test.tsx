@@ -81,15 +81,14 @@ function message(overrides = {}) {
     questionId: '',
     phase: 'answering',
     error: null,
-    reasoning: '',
     ...overrides,
   };
 }
 
 describe('AiChatContent', () => {
-  it('shows the live reasoning text while the model is thinking (no answer yet)', () => {
+  it('shows a "Thinking..." indicator while the answer is generating (no answer yet)', () => {
     mockUseChartSearchAi.mockReturnValue({
-      messages: [message({ reasoning: 'The query asks about medications. Scanning drug orders.' })],
+      messages: [message({ phase: 'answering', answer: '' })],
       isAwaitingAnswer: true,
       submitQuestion: mockSubmitQuestion,
       stopCurrent: mockStopCurrent,
@@ -97,12 +96,12 @@ describe('AiChatContent', () => {
     });
     render(<AiChatContent mode="workspace" />);
 
-    expect(screen.getByText('The query asks about medications. Scanning drug orders.')).toBeInTheDocument();
+    expect(screen.getByText('Thinking...')).toBeInTheDocument();
   });
 
-  it('hides the reasoning once answer text starts streaming', () => {
+  it('drops the "Thinking..." indicator once answer text arrives', () => {
     mockUseChartSearchAi.mockReturnValue({
-      messages: [message({ answer: 'Aspirin [1]', reasoning: 'Scanning drug orders.' })],
+      messages: [message({ answer: 'Aspirin [1]' })],
       isAwaitingAnswer: true,
       submitQuestion: mockSubmitQuestion,
       stopCurrent: mockStopCurrent,
@@ -110,7 +109,7 @@ describe('AiChatContent', () => {
     });
     render(<AiChatContent mode="workspace" />);
 
-    expect(screen.queryByText('Scanning drug orders.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Thinking...')).not.toBeInTheDocument();
   });
 
   describe('submit guards', () => {
@@ -254,47 +253,6 @@ describe('AiChatContent', () => {
           },
         ],
         isAwaitingAnswer: false,
-        submitQuestion: mockSubmitQuestion,
-        stopCurrent: mockStopCurrent,
-        clearMessages: vi.fn(),
-      });
-      rerender(<AiChatContent mode="workspace" patientUuid="p1" />);
-
-      expect(log.scrollTop).toBe(1000);
-    });
-
-    // Regression: the live "Thinking..." reasoning streams before any answer text exists,
-    // so it changes neither `answer` nor the phase (stays 'answering'). If the scroll effect
-    // ignores reasoning, the growing scratchpad runs past the viewport and is clipped out of sight
-    // (it disappears behind the disclaimer). The effect must re-fire on each reasoning chunk.
-    it('scrolls history area to bottom as reasoning streams (before any answer)', () => {
-      const thinking = {
-        id: 'm1',
-        question: 'Summarize the visits.',
-        answer: '',
-        references: [],
-        questionId: '',
-        phase: 'answering',
-        error: null,
-        reasoning: 'Scanning',
-      };
-      mockUseChartSearchAi.mockReturnValue({
-        messages: [thinking],
-        isAwaitingAnswer: true,
-        submitQuestion: mockSubmitQuestion,
-        stopCurrent: mockStopCurrent,
-        clearMessages: vi.fn(),
-      });
-      const { rerender } = render(<AiChatContent mode="workspace" patientUuid="p1" />);
-
-      const log = screen.getByRole('log');
-      Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1000 });
-      log.scrollTop = 0;
-
-      // Only `reasoning` grows — answer stays empty, phase stays 'answering'.
-      mockUseChartSearchAi.mockReturnValue({
-        messages: [{ ...thinking, reasoning: 'Scanning visits, then active problems, then medications…' }],
-        isAwaitingAnswer: true,
         submitQuestion: mockSubmitQuestion,
         stopCurrent: mockStopCurrent,
         clearMessages: vi.fn(),

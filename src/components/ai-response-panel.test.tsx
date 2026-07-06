@@ -690,9 +690,9 @@ describe('AiResponsePanel staged in-depth status', () => {
     answerValidation: { status: 'checked' as const, label: 'Checked' },
   };
 
-  it('exposes phase="in-depth" and data-indepth-status="pending" while the in-depth streams', () => {
+  it('exposes phase="in-depth" and data-indepth-status="pending" while the in-depth generates', () => {
     const { container } = render(
-      <AiResponsePanel {...stagedBase} phase="in-depth" inDepth={{ status: 'pending', answer: 'streaming…' }} />,
+      <AiResponsePanel {...stagedBase} phase="in-depth" inDepth={{ status: 'pending', answer: 'generating…' }} />,
     );
     expect(container.querySelector('[data-turn-phase="in-depth"]')).toBeInTheDocument();
     expect(container.querySelector('[data-indepth-status="pending"]')).toBeInTheDocument();
@@ -708,7 +708,7 @@ describe('AiResponsePanel staged in-depth status', () => {
     expect(container.querySelector('[data-indepth-status="pending"]')).not.toBeInTheDocument();
   });
 
-  it('exposes phase="settled" (composer already unlocked) before the first in-depth token', () => {
+  it('exposes phase="settled" (composer already unlocked) after validation, before in-depth begins', () => {
     const { container } = render(
       <AiResponsePanel {...stagedBase} phase="settled" inDepth={{ status: 'pending', answer: '' }} />,
     );

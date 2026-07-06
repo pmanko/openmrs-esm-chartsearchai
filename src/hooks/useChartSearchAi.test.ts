@@ -72,7 +72,7 @@ describe('useChartSearchAi', () => {
       'What meds?',
       expect.objectContaining({
         onSession: expect.any(Function),
-        onToken: expect.any(Function),
+        onAnswerDone: expect.any(Function),
         onDone: expect.any(Function),
         onError: expect.any(Function),
       }),
@@ -112,7 +112,7 @@ describe('useChartSearchAi', () => {
     );
   });
 
-  it('accumulates tokens into the last message during streaming', async () => {
+  it('sets the answer whole on answer_done (the hub delivers a complete answer, not tokens)', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
     await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
@@ -123,12 +123,12 @@ describe('useChartSearchAi', () => {
     const callbacks = mockChatStream.mock.calls[0][3];
 
     act(() => {
-      callbacks.onToken('Hello');
-      callbacks.onToken(' world');
+      callbacks.onAnswerDone({ answer: 'Hello world', references: [], messageId: 'm1' });
     });
 
     expect(result.current.messages[0].answer).toBe('Hello world');
-    expect(result.current.messages[0].phase).toBe('answering');
+    // No validator in this payload → settle immediately (composer unlocks).
+    expect(result.current.messages[0].phase).toBe('settled');
   });
 
   it('finalizes last message on streaming done with messageId as questionId', async () => {
@@ -303,12 +303,12 @@ describe('useChartSearchAi', () => {
     });
     const secondCallbacks = mockChatStream.mock.calls[1][3];
     act(() => {
-      secondCallbacks.onThinking('Still thinking...');
-      secondCallbacks.onToken('Partial...');
+      // Answer has landed (whole, via answer_done) and in-depth is generating; the user stops here.
+      secondCallbacks.onAnswerDone({ answer: 'Partial answer.', references: [], messageId: 'm-2' });
     });
 
     expect(result.current.messages).toHaveLength(2);
-    expect(result.current.messages[1].answer).toBe('Partial...');
+    expect(result.current.messages[1].answer).toBe('Partial answer.');
 
     act(() => {
       result.current.stopCurrent();
@@ -317,9 +317,7 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[0].answer).toBe('Answer.');
     expect(result.current.messages[1].phase).toBe('complete');
-    expect(result.current.messages[1].answer).toBe('Partial...');
-    // The settled message keeps no leftover reasoning scratchpad (mirrors `done`).
-    expect(result.current.messages[1].reasoning).toBe('');
+    expect(result.current.messages[1].answer).toBe('Partial answer.');
   });
 
   it('stopCurrent removes the message bubble when no answer was received', async () => {
@@ -465,9 +463,6 @@ describe('useChartSearchAi', () => {
 
     expect(phase()).toBe('answering');
 
-    act(() => cb.onToken('Aspirin'));
-    expect(phase()).toBe('answering');
-
     act(() =>
       cb.onAnswerDone({
         answer: 'Aspirin [1].',
@@ -488,7 +483,9 @@ describe('useChartSearchAi', () => {
     );
     expect(phase()).toBe('settled');
 
-    act(() => cb.onInDepthToken('In-depth detail.'));
+    // indepth_pending (not a token) is what moves the turn into the 'in-depth' phase — the hub
+    // delivers the in-depth answer whole on indepth_done, it does not token-stream it.
+    act(() => cb.onInDepthPending({ messageId: 'm-1', inDepth: { status: 'pending', answer: '' } }));
     expect(phase()).toBe('in-depth');
 
     act(() => cb.onInDepthDone({ status: 'complete', answer: 'In-depth detail.' }));
@@ -532,9 +529,9 @@ describe('useChartSearchAi', () => {
   });
 
   // Interactive-first: the answer settles (answer + validation) BEFORE the terminal `done`, while
-  // in-depth is still streaming. isAwaitingAnswer must drop then (unlocking the composer) even
-  // though the turn is still streaming through to `done`.
-  it('drops isAwaitingAnswer once the answer settles while in-depth still streams', async () => {
+  // in-depth is still generating. isAwaitingAnswer must drop then (unlocking the composer) even
+  // though the turn is still running through to `done`.
+  it('drops isAwaitingAnswer once the answer settles while in-depth still generates', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
     await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
@@ -556,10 +553,10 @@ describe('useChartSearchAi', () => {
         answerValidation: { status: 'checked', label: 'Checked' },
         messageId: 'm-1',
       });
-      cb.onInDepthToken('In-depth detail.');
+      cb.onInDepthPending({ messageId: 'm-1', inDepth: { status: 'pending', answer: '' } });
     });
 
-    // Answer settled + in-depth streaming: composer unlocks, but the turn is still streaming.
+    // Answer settled + in-depth generating: composer unlocks, but the turn is still running.
     expect(result.current.isAwaitingAnswer).toBe(false);
     expect(result.current.messages[0].phase).toBe('in-depth');
 
@@ -588,10 +585,10 @@ describe('useChartSearchAi', () => {
         answerValidation: { status: 'checked', label: 'Checked' },
         messageId: 'm-1',
       });
-      cb1.onInDepthToken('Partial in-depth.');
+      cb1.onInDepthPending({ messageId: 'm-1', inDepth: { status: 'pending', answer: 'Partial in-depth.' } });
     });
 
-    // New question while in-depth streams → preempt the first turn and start the second.
+    // New question while in-depth generates → preempt the first turn and start the second.
     act(() => {
       result.current.submitQuestion('patient-uuid', 'Q2?');
     });

@@ -66,12 +66,9 @@ describe('chatPatientChartStream', () => {
   function makeCallbacks() {
     return {
       onSession: vi.fn(),
-      onThinking: vi.fn(),
-      onToken: vi.fn(),
       onAnswerDone: vi.fn(),
       onAnswerValidation: vi.fn(),
       onInDepthPending: vi.fn(),
-      onInDepthToken: vi.fn(),
       onInDepthDone: vi.fn(),
       onInDepthError: vi.fn(),
       onDone: vi.fn(),
@@ -133,38 +130,15 @@ describe('chatPatientChartStream', () => {
     expect(cb.onError).not.toHaveBeenCalled();
   });
 
-  it('parses optional thinking events before chat tokens', async () => {
-    const cb = makeCallbacks();
-    fetchSpy = vi
-      .spyOn(window, 'fetch')
-      .mockResolvedValueOnce(
-        mockStreamResponse([
-          'event:thinking\ndata: Checking the chart.\n\n',
-          'event:token\ndata: Answer text.\n\n',
-          'event:done\ndata: {"answer":"Answer text.","references":[]}\n\n',
-        ]),
-      );
-
-    chatPatientChartStream('uuid-1', null, 'q?', cb);
-    await flushPromises();
-
-    expect(cb.onThinking).toHaveBeenCalledWith('Checking the chart.');
-    expect(cb.onToken).toHaveBeenCalledWith('Answer text.');
-    expect(cb.onDone).toHaveBeenCalledWith(expect.objectContaining({ answer: 'Answer text.' }));
-    expect(cb.onError).not.toHaveBeenCalled();
-  });
-
   it('parses staged answer and in-depth events before final done', async () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
       .mockResolvedValueOnce(
         mockStreamResponse([
-          'event:token\ndata: Direct answer\n\n',
           'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"validating","label":"Checking answer"},"inDepth":{"status":"pending","answer":""}}\n\n',
           'event:answer_validation\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checked","label":"Checked"}}\n\n',
           'event:indepth_pending\ndata: {"messageId":"m1","inDepth":{"status":"pending","answer":""}}\n\n',
-          'event:indepth_token\ndata: **In Depth**\ndata: - background\n\n',
           'event:indepth_done\ndata: {"status":"complete","answer":"- background"}\n\n',
           'event:done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","inDepth":{"status":"complete","answer":"- background"}}\n\n',
         ]),
@@ -196,7 +170,6 @@ describe('chatPatientChartStream', () => {
       messageId: 'm1',
       inDepth: { status: 'pending', answer: '' },
     });
-    expect(cb.onInDepthToken).toHaveBeenCalledWith('**In Depth**\n- background');
     expect(cb.onInDepthDone).toHaveBeenCalledWith({ status: 'complete', answer: '- background' });
     expect(cb.onDone).toHaveBeenCalledWith(
       expect.objectContaining({

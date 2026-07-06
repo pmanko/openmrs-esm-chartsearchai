@@ -1,14 +1,15 @@
 /**
  * One explicit lifecycle phase per assistant turn — the single source of truth the UI derives all
- * behavior, rendering, and DOM signals from. It mirrors the backend's staged SSE state machine
- * (ChartSearchAiRestController.streamStagedChat) 1:1:
+ * behavior, rendering, and DOM signals from. It mirrors the hub's staged SSE events, relayed
+ * verbatim by ChartSearchAiRestController.handleHubStagedEvent:
  *
- *   created/token* → 'answering'
- *   answer_done    → 'validating'   (answer text complete; self-check running)
- *   answer_validation / indepth_pending → 'settled'   (answer available; composer unlocks)
- *   indepth_token* → 'in-depth'     (in-depth streaming in the background)
+ *   created           → 'answering'
+ *   answer_done       → 'validating'   (answer text complete; self-check running)
+ *   answer_validation → 'settled'      (answer available + checked; composer unlocks)
+ *   indepth_pending   → 'in-depth'     (in-depth generating in the background; delivered whole on
+ *                                       indepth_done — the hub does not token-stream in-depth)
  *   indepth_done | indepth_error | done | stop | preempt → 'complete'
- *   onError        → 'error'        (the answer generation itself failed)
+ *   onError           → 'error'        (the answer generation itself failed)
  *
  * Replaces the previous four overlapping flags (isLoading, answerSettled, inDepth.status,
  * answerValidation.status) that each consumer had to reinterpret. The status detail of the

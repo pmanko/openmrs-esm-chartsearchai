@@ -30,9 +30,6 @@ export interface ChatMessage {
    */
   phase: TurnPhase;
   error: string | null;
-  /** Live model reasoning while the answer is still being generated — a transient
-   *  "thinking" indicator, cleared when the answer completes. Never the answer. */
-  reasoning: string;
   /**
    * The backend model that produced this answer (the per-request override the
    * picker selected, or the config default). Surfaced as a subtle per-response
@@ -111,7 +108,6 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         questionId: '',
         phase: 'complete',
         error: null,
-        reasoning: '',
       };
     } else if (m.role === 'assistant') {
       if (pending) {
@@ -210,8 +206,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           return prev.filter((_, i) => i !== idx);
         }
         const updated = [...prev];
-        // Mirror `done`: a settled message keeps no reasoning scratchpad, even when stopped mid-stream.
-        updated[idx] = { ...msg, phase: 'complete', reasoning: '' };
+        updated[idx] = { ...msg, phase: 'complete' };
         return updated;
       });
     }
@@ -258,11 +253,10 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             const msg = prev[idx];
             if (isTerminal(msg.phase)) return prev;
             const updated = [...prev];
-            // Keep whatever in-depth streamed so far, marked complete (no perpetual spinner).
+            // Keep whatever in-depth arrived so far, marked complete (no perpetual spinner).
             updated[idx] = {
               ...msg,
               phase: 'complete',
-              reasoning: '',
               inDepth: msg.inDepth ? { ...msg.inDepth, status: 'complete' } : msg.inDepth,
             };
             return updated;
@@ -281,7 +275,6 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         questionId: '',
         phase: 'answering',
         error: null,
-        reasoning: '',
       };
 
       updateMessages(patientUuid, (prev) => [...prev, newMessage]);
@@ -358,7 +351,6 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             inDepth: response.inDepth ?? { status: 'pending', answer: '' },
             questionId: response.messageId ?? response.questionId ?? '',
             resolvedModel: response.resolvedModel,
-            reasoning: '',
             // Only enter the `validating` phase when a validation check is actually coming (the hub
             // marks the answer_done with answerValidation.status === 'validating'). With no validator
             // configured, no answer_validation event follows — settle immediately so the composer
@@ -405,24 +397,10 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           updated[idx] = {
             ...updated[idx],
             questionId: payload.messageId ?? updated[idx].questionId,
-            phase: 'settled',
-            inDepth: payload.inDepth ?? { status: 'pending', answer: updated[idx].inDepth?.answer ?? '' },
-          };
-          return updated;
-        });
-      };
-
-      const inDepthToken = (token: string) => {
-        if (!isMountedRef.current) return;
-        updateMessages(patientUuid, (prev) => {
-          const idx = prev.findIndex((m) => m.id === messageId);
-          if (idx === -1) return prev;
-          const updated = [...prev];
-          const current = updated[idx].inDepth?.answer ?? '';
-          updated[idx] = {
-            ...updated[idx],
+            // in-depth is now generating in the background (delivered whole on indepth_done — the hub
+            // does not token-stream). The composer is already unlocked; a new question preempts it.
             phase: 'in-depth',
-            inDepth: { status: 'pending', answer: stripInDepthHeader(current + token) },
+            inDepth: payload.inDepth ?? { status: 'pending', answer: updated[idx].inDepth?.answer ?? '' },
           };
           return updated;
         });
@@ -475,32 +453,9 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             onSession: (uuid) => {
               setSessionUuid(patientUuid, uuid);
             },
-            // Live reasoning: streamed by the server before the answer text exists; shown as a
-            // transient "thinking" scratchpad and cleared once the answer settles (done/stop).
-            onThinking: (chunk) => {
-              if (!isMountedRef.current) return;
-              updateMessages(patientUuid, (prev) => {
-                const idx = prev.findIndex((m) => m.id === messageId);
-                if (idx === -1) return prev;
-                const updated = [...prev];
-                updated[idx] = { ...updated[idx], reasoning: updated[idx].reasoning + chunk };
-                return updated;
-              });
-            },
-            onToken: (token) => {
-              if (!isMountedRef.current) return;
-              updateMessages(patientUuid, (prev) => {
-                const idx = prev.findIndex((m) => m.id === messageId);
-                if (idx === -1) return prev;
-                const updated = [...prev];
-                updated[idx] = { ...updated[idx], answer: updated[idx].answer + token };
-                return updated;
-              });
-            },
             onAnswerDone: answerDone,
             onAnswerValidation: answerValidation,
             onInDepthPending: inDepthPending,
-            onInDepthToken: inDepthToken,
             onInDepthDone: inDepthDone,
             onInDepthError: inDepthError,
             onDone: done,
