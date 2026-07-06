@@ -477,8 +477,8 @@ export interface EndpointModel {
   /**
    * Whether this model is served by the hub's staged pipeline (answer ->
    * validation -> in-depth, delivered as separate SSE phase events) versus a
-   * single-completion response. Drives the picker's staged-UX decision —
-   * replaces the old name-prefix guess (shouldUseStagedInDepth).
+   * single-completion response. The authoritative capability signal the
+   * picker routes on — never guessed from the model id's name.
    */
   staged: boolean;
 }
