@@ -14,7 +14,7 @@ A floating AI button appears on the patient chart page. Clicking it opens a sear
 - "Has she ever had a bad reaction to penicillin?"
 - "Is her diabetes getting better or worse?"
 
-The module streams an answer token-by-token (via SSE) with numbered citations (e.g. `[1]`, `[2]`) that link back to the relevant section of the patient chart (Results, Orders, Allergies, etc.).
+The module receives staged SSE updates from the backend: the short answer arrives as one chunk, optional answer validation updates the same message, and in-depth analysis arrives as a later whole chunk. Numbered citations (e.g. `[1]`, `[2]`) link back to the relevant section of the patient chart (Results, Orders, Allergies, etc.).
 
 When the backend's optional [drug-reference feature](https://github.com/openmrs/openmrs-module-chartsearchai#drug-reference-injection--safety-validation) is enabled, the panel also shows non-blocking **safety-check** chips below the answer (overdose / interaction / contraindication) and renders drug-reference citations as distinct, non-navigating reference chips.
 
@@ -51,7 +51,7 @@ The following options can be set via the OpenMRS 3.x config system:
 |---|---|---|---|
 | `aiSearchPlaceholder` | `string` | `"Ask AI about this patient..."` | Placeholder text for the search input |
 | `maxQuestionLength` | `number` | `1000` | Maximum characters allowed in a question |
-| `useStreaming` | `boolean` | `true` | Use the SSE streaming endpoint for token-by-token responses |
+| `useStreaming` | `boolean` | `true` | Use the SSE endpoint for staged answer/validation/in-depth updates |
 
 ## API endpoints used
 
@@ -60,7 +60,7 @@ All endpoints are served by the backend module under `/ws/rest/v1/chartsearchai/
 | Method | Path | Description |
 |---|---|---|
 | POST | `/chat` | Synchronous chat turn (returns the complete answer) |
-| POST | `/chat/stream` | SSE streaming chat turn (tokens streamed in real time; multi-turn via `session`) |
+| POST | `/chat/stream` | SSE staged chat turn (answer/validation/in-depth phase events; multi-turn via `session`) |
 | GET | `/chat` | Hydrate a patient's active session + prior messages |
 | POST | `/chat/new` | Close the active session and open a fresh one |
 
@@ -86,7 +86,8 @@ Response (`POST /chat`, and the final `done` event of `POST /chat/stream`):
 When `POST /chat/stream` is sent with `staged: "true"` (only for models the backend advertises as
 staged-capable via `GET /endpoints`), it emits a richer sequence instead of a single `done`:
 `answer_done` (direct answer complete) → optional `answer_validation` (self-check result) →
-`indepth_pending` / `indepth_token`* → `indepth_done` or `indepth_error` → `done`. See the
+`indepth_pending` → `indepth_done` or `indepth_error` → `done`. The hub does not token-stream the
+answer or in-depth text; each content phase is delivered whole. See the
 [backend README's streaming chat docs](https://github.com/openmrs/openmrs-module-chartsearchai#streaming-chat-sse) for the full event reference.
 
 The required privilege is **AI Query Patient Data**.

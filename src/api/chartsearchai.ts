@@ -169,11 +169,11 @@ export async function submitFeedback(feedback: AiFeedback): Promise<void> {
  * Streaming variant for multi-turn chat. SSE (Server-Sent Events) stream, parsed via raw
  * fetch instead of openmrsFetch because openmrsFetch consumes the response body to parse
  * it as JSON, which prevents streaming — we need direct access to response.body (the
- * ReadableStream). On top of the token/done/error events:
+ * ReadableStream). The staged endpoint emits answer/validation/in-depth boundary events:
  *   - sends an optional {@code session} uuid so the server can reuse the
  *     prior conversation thread
  *   - captures the server's {@code X-ChartSearchAi-Session} response header
- *     and surfaces it via {@code onSession} before the first token arrives
+ *     and surfaces it via {@code onSession} before the first content event arrives
  *
  * The server is the source of truth for conversation history — the client
  * sends only the new user message, not the rendered transcript.
@@ -430,10 +430,10 @@ export interface ModelListResponse {
 
 /**
  * List the models the active remote endpoint serves, plus the current GP
- * selection. Returns {engine:'local', available:[]} when the backend is
- * running the local engine — the picker hides itself in that case.
+ * selection. Returns an empty list when the backend cannot expose a model list;
+ * the picker hides itself in that case.
  *
- * 503 from the server (local engine, misconfig) propagates as a thrown
+ * 503 from the server (for example, endpoint misconfiguration) propagates as a thrown
  * error; the picker treats throw + empty list the same way (hidden).
  */
 export async function fetchAvailableModels(abortController?: AbortController): Promise<ModelListResponse> {
@@ -496,7 +496,7 @@ export interface EndpointListResponse {
 
 /**
  * List the configured endpoints as picker sections, each with its live model
- * list (GET /chartsearchai/endpoints). 503 (local engine / misconfig) throws;
+ * list (GET /chartsearchai/endpoints). 503 (for example, endpoint misconfiguration) throws;
  * the picker treats throw the same as "hidden".
  */
 export async function fetchEndpoints(abortController?: AbortController): Promise<EndpointListResponse> {
