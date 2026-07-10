@@ -1,36 +1,56 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useConfig } from '@openmrs/esm-framework';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useChartSearchAi } from './useChartSearchAi';
-import { searchPatientChart, searchPatientChartStream } from '../api/chartsearchai';
+import { chatPatientChartStream, fetchChatHistory, startNewChat } from '../api/chartsearchai';
 import { chatSessionStore } from '../store/chat-session.store';
 
-const mockUseConfig = useConfig as Mock;
-
 vi.mock('../api/chartsearchai', () => ({
-  searchPatientChart: vi.fn(),
-  searchPatientChartStream: vi.fn(),
+  chatPatientChartStream: vi.fn(),
+  fetchChatHistory: vi.fn(),
+  startNewChat: vi.fn(),
 }));
 
-const mockSearchPatientChart = searchPatientChart as Mock;
-const mockSearchPatientChartStream = searchPatientChartStream as Mock;
+const mockChatStream = chatPatientChartStream as Mock;
+const mockFetchHistory = fetchChatHistory as Mock;
+const mockStartNewChat = startNewChat as Mock;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUseConfig.mockReturnValue({ useStreaming: false });
-  chatSessionStore.setState({ messagesByPatient: {} });
+  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedProfileId: null });
+  // Default: empty hydration so tests opt-in to populated history.
+  mockFetchHistory.mockResolvedValue({ session: 'srv-session-default', messages: [] });
 });
 
 describe('useChartSearchAi', () => {
   it('returns empty messages and not loading initially', () => {
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
     expect(result.current.messages).toEqual([]);
-    expect(result.current.isAnyLoading).toBe(false);
+    expect(result.current.isAwaitingAnswer).toBe(false);
   });
 
-  it('appends a loading message on submitQuestion', () => {
-    mockSearchPatientChart.mockReturnValue(new Promise(() => {}));
+  it('hydrates chat history on mount and stores the server session uuid', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-1',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'First Q', createdAt: 1 },
+        { messageId: 'a-1', role: 'assistant', content: 'First A', createdAt: 2 },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].question).toBe('First Q');
+    expect(result.current.messages[0].answer).toBe('First A');
+    expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-1');
+  });
+
+  it('appends a loading message on submitQuestion and calls chatPatientChartStream with null session before hydration', async () => {
+    // Force hydration to never resolve so the session uuid stays null
+    // when submitQuestion fires — this exercises the "first turn ever"
+    // path the server resolves to opening a fresh session.
+    mockFetchHistory.mockReturnValueOnce(new Promise(() => {}));
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
 
     act(() => {
@@ -39,324 +59,88 @@ describe('useChartSearchAi', () => {
 
     expect(result.current.messages).toHaveLength(1);
     expect(result.current.messages[0].question).toBe('What meds?');
-    expect(result.current.messages[0].isLoading).toBe(true);
+    expect(result.current.messages[0].phase).toBe('answering');
     expect(result.current.messages[0].answer).toBe('');
-    expect(result.current.isAnyLoading).toBe(true);
-    expect(mockSearchPatientChart).toHaveBeenCalledWith('patient-uuid', 'What meds?', expect.any(AbortController));
-  });
-
-  it('populates answer on successful sync response', async () => {
-    const response = {
-      answer: 'The patient is on metformin.',
-      references: [{ index: 1, resourceType: 'DrugOrder', resourceUuid: 'uuid-1', date: '2025-01-01' }],
-      questionId: 'q-abc',
-    };
-    mockSearchPatientChart.mockResolvedValue(response);
-
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'What meds?');
-    });
-
-    expect(result.current.messages).toHaveLength(1);
-    expect(result.current.messages[0].answer).toBe('The patient is on metformin.');
-    expect(result.current.messages[0].references).toEqual(response.references);
-    expect(result.current.messages[0].questionId).toBe('q-abc');
-    expect(result.current.messages[0].isLoading).toBe(false);
-    expect(result.current.isAnyLoading).toBe(false);
-  });
-
-  it('captures safetyWarnings from the response onto the message', async () => {
-    // The data-flow link the safety chips depend on: if `done` stops copying response.safetyWarnings,
-    // the panel renders nothing and no other test would catch it.
-    const response = {
-      answer: 'Ibuprofen is an option [1].',
-      references: [],
-      safetyWarnings: [
-        { type: 'contraindication', drug: 'Ibuprofen', detail: 'the patient has a recorded allergy to Ibuprofen' },
-      ],
-      questionId: 'q-sw',
-    };
-    mockSearchPatientChart.mockResolvedValue(response);
-
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'Is ibuprofen safe?');
-    });
-
-    expect(result.current.messages[0].safetyWarnings).toEqual(response.safetyWarnings);
-  });
-
-  it('defaults safetyWarnings to an empty array when the response omits them', async () => {
-    // The drug-reference feature is optional and off by default, so most responses carry no warnings;
-    // the message must still hold an array (the `?? []` fallback), never undefined.
-    mockSearchPatientChart.mockResolvedValue({ answer: 'BP is 120/80 [1].', references: [], questionId: 'q-none' });
-
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'Latest BP?');
-    });
-
-    expect(result.current.messages[0].safetyWarnings).toEqual([]);
-  });
-
-  it('sets error on failed sync response', async () => {
-    mockSearchPatientChart.mockRejectedValue({ message: 'Server error' });
-
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'What meds?');
-    });
-
-    expect(result.current.messages[0].error).toBe('Server error');
-    expect(result.current.messages[0].isLoading).toBe(false);
-    expect(result.current.isAnyLoading).toBe(false);
-  });
-
-  it('appends a second message without removing the first', async () => {
-    const response1 = { answer: 'Answer 1.', references: [], questionId: 'q-1' };
-    const response2 = { answer: 'Answer 2.', references: [], questionId: 'q-2' };
-    mockSearchPatientChart.mockResolvedValueOnce(response1).mockResolvedValueOnce(response2);
-
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'First question?');
-    });
-
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'Second question?');
-    });
-
-    expect(result.current.messages).toHaveLength(2);
-    expect(result.current.messages[0].question).toBe('First question?');
-    expect(result.current.messages[0].answer).toBe('Answer 1.');
-    expect(result.current.messages[1].question).toBe('Second question?');
-    expect(result.current.messages[1].answer).toBe('Answer 2.');
-  });
-
-  it('uses streaming endpoint when configured', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'Any allergies?');
-    });
-
-    expect(mockSearchPatientChartStream).toHaveBeenCalledWith(
+    expect(result.current.isAwaitingAnswer).toBe(true);
+    expect(mockChatStream).toHaveBeenCalledWith(
       'patient-uuid',
-      'Any allergies?',
+      null,
+      'What meds?',
       expect.objectContaining({
-        onToken: expect.any(Function),
+        onSession: expect.any(Function),
+        onAnswerDone: expect.any(Function),
         onDone: expect.any(Function),
         onError: expect.any(Function),
-        onReferences: expect.any(Function),
       }),
       expect.any(AbortController),
+      // No per-session pick → null backend → server uses its config default.
+      null,
     );
   });
 
-  it('shows early (pre-grounding) references on the in-flight message, then done overwrites with grounded ones', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
+  it('captures session uuid via onSession and reuses it on the next submit', async () => {
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
     act(() => {
-      result.current.submitQuestion('patient-uuid', 'Any allergies?');
+      result.current.submitQuestion('patient-uuid', 'Q1');
     });
 
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
-    const earlyRefs = [{ index: 1, resourceType: 'condition', resourceUuid: 'uuid-7', date: '2022-11-13' }];
-
-    // Early references event arrives before grounding finishes: citations show immediately,
-    // message still loading, no grounding verdict yet.
+    const callbacks1 = mockChatStream.mock.calls[0][3];
     act(() => {
-      callbacks.onReferences(earlyRefs);
+      callbacks1.onSession('srv-session-captured');
+      callbacks1.onDone({ answer: 'A1', references: [], session: 'srv-session-captured', messageId: 'm-1' });
     });
-    expect(result.current.messages[0].references).toEqual(earlyRefs);
-    expect(result.current.messages[0].references[0].grounded).toBeUndefined();
-    expect(result.current.messages[0].isLoading).toBe(true);
+    expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-captured');
 
-    // done re-sends the same citations with grounding verdicts; they replace the early ones.
     act(() => {
-      callbacks.onDone({
-        answer: 'Has it [1]',
-        references: [{ ...earlyRefs[0], grounded: true }],
-        questionId: 'q-1',
-      });
+      result.current.submitQuestion('patient-uuid', 'Q2');
     });
-    expect(result.current.messages[0].references[0].grounded).toBe(true);
-    expect(result.current.messages[0].isLoading).toBe(false);
+
+    expect(mockChatStream).toHaveBeenLastCalledWith(
+      'patient-uuid',
+      'srv-session-captured',
+      'Q2',
+      expect.any(Object),
+      expect.any(AbortController),
+      null,
+    );
   });
 
-  it('accumulates live reasoning on the in-flight message and clears it on done', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
+  it('sets the answer whole on answer_done (the hub delivers a complete answer, not tokens)', async () => {
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'What meds?');
-    });
-
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
-
-    act(() => {
-      callbacks.onThinking('The query asks about medications. ');
-      callbacks.onThinking('Scanning drug orders.');
-    });
-    expect(result.current.messages[0].reasoning).toBe('The query asks about medications. Scanning drug orders.');
-    expect(result.current.messages[0].isLoading).toBe(true);
-
-    // The scratchpad is a live indicator, not part of the persisted result — done clears it.
-    act(() => {
-      callbacks.onDone({ answer: 'Aspirin [1]', references: [], questionId: 'q-1' });
-    });
-    expect(result.current.messages[0].reasoning).toBe('');
-    expect(result.current.messages[0].answer).toBe('Aspirin [1]');
-  });
-
-  it('accumulates preliminary preview reasoning and replaces it when committed reasoning arrives', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'BP history?');
-    });
-
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
-
-    // The progressive-reasoning preview streams first, onto its own channel.
-    act(() => {
-      callbacks.onPreliminary('Quick look: ');
-      callbacks.onPreliminary('records [2] mention BP.');
-    });
-    // The preview's [N] markers are stripped — they index the focused chart, not the final answer's
-    // records, so showing them would mislead. (The committed reasoning keeps its markers.)
-    expect(result.current.messages[0].preliminaryReasoning).toBe('Quick look: records mention BP.');
-    expect(result.current.messages[0].preliminaryReasoning).not.toContain('[');
-    expect(result.current.messages[0].reasoning).toBe('');
-
-    // The committed reasoning supersedes and CLEARS the provisional preview — a wrong preview
-    // must not linger once the full-chart pass corrects it.
-    act(() => {
-      callbacks.onThinking('Reviewing the full chart.');
-    });
-    expect(result.current.messages[0].reasoning).toBe('Reviewing the full chart.');
-    expect(result.current.messages[0].preliminaryReasoning).toBe('');
-  });
-
-  it('strips a preview citation marker even when it is split across SSE chunks', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'BP?');
-    });
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
-
-    // The marker [2] is split across two chunks ('records [' then '2] mention BP.'); accumulation
-    // re-strips the whole buffer each chunk, so it must still come out clean.
-    act(() => {
-      callbacks.onPreliminary('records [');
-      callbacks.onPreliminary('2] mention BP.');
-    });
-    expect(result.current.messages[0].preliminaryReasoning).toBe('records mention BP.');
-    expect(result.current.messages[0].preliminaryReasoning).not.toContain('[');
-  });
-
-  it('applies trailing grounded verdicts to the completed message (async grounding)', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'Any allergies?');
-    });
-
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
-    const refs = [{ index: 1, resourceType: 'condition', resourceUuid: 'uuid-7', date: '2022-11-13' }];
-
-    // Async grounding: done arrives with verdict-less references and completes the message...
-    act(() => {
-      callbacks.onDone({ answer: 'Has it [1]', references: refs, questionId: 'q-1' });
-    });
-    expect(result.current.messages[0].isLoading).toBe(false);
-    expect(result.current.messages[0].references[0].grounded).toBeUndefined();
-
-    // ...then the trailing grounded event re-sends them with verdicts, which must land on the
-    // SAME (already completed) message.
-    act(() => {
-      callbacks.onGrounded([{ ...refs[0], grounded: true }]);
-    });
-    expect(result.current.messages[0].references[0].grounded).toBe(true);
-    expect(result.current.messages[0].isLoading).toBe(false);
-    expect(result.current.messages[0].questionId).toBe('q-1');
-  });
-
-  it('applies grounded verdicts to the right message even after a newer question was submitted', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'Any allergies?');
-    });
-    const firstCallbacks = mockSearchPatientChartStream.mock.calls[0][2];
-    act(() => {
-      firstCallbacks.onDone({
-        answer: 'Has it [1]',
-        references: [{ index: 1, resourceType: 'condition', resourceUuid: 'uuid-7', date: '2022-11-13' }],
-        questionId: 'q-1',
-      });
-    });
-
-    // done released the in-flight slot, so a second question can start while the first
-    // stream's grounded event is still pending.
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'Any meds?');
-    });
-
-    act(() => {
-      firstCallbacks.onGrounded([
-        { index: 1, resourceType: 'condition', resourceUuid: 'uuid-7', date: '2022-11-13', grounded: false },
-      ]);
-    });
-
-    expect(result.current.messages).toHaveLength(2);
-    expect(result.current.messages[0].references[0].grounded).toBe(false);
-    expect(result.current.messages[1].references).toEqual([]);
-  });
-
-  it('accumulates tokens into the last message during streaming', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
     act(() => {
       result.current.submitQuestion('patient-uuid', 'Summary?');
     });
-
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
+    const callbacks = mockChatStream.mock.calls[0][3];
 
     act(() => {
-      callbacks.onToken('Hello');
-      callbacks.onToken(' world');
+      callbacks.onAnswerDone({ answer: 'Hello world', references: [], messageId: 'm1' });
     });
 
     expect(result.current.messages[0].answer).toBe('Hello world');
-    expect(result.current.messages[0].isLoading).toBe(true);
+    // No validator in this payload → settle immediately (composer unlocks).
+    expect(result.current.messages[0].phase).toBe('settled');
   });
 
-  it('finalizes last message on streaming done', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
+  it('finalizes last message on streaming done with messageId as questionId', async () => {
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
     act(() => {
       result.current.submitQuestion('patient-uuid', 'Summary?');
     });
-
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
+    const callbacks = mockChatStream.mock.calls[0][3];
     const finalResponse = {
       answer: 'Final answer.',
       references: [{ index: 1, resourceType: 'Obs', resourceUuid: 'uuid-10', date: '2025-06-01' }],
-      questionId: 'q-stream-1',
+      session: 'srv-session-1',
+      messageId: 'msg-final',
     };
 
     act(() => {
@@ -365,19 +149,126 @@ describe('useChartSearchAi', () => {
 
     expect(result.current.messages[0].answer).toBe('Final answer.');
     expect(result.current.messages[0].references).toEqual(finalResponse.references);
-    expect(result.current.messages[0].questionId).toBe('q-stream-1');
-    expect(result.current.messages[0].isLoading).toBe(false);
+    expect(result.current.messages[0].questionId).toBe('msg-final');
+    expect(result.current.messages[0].phase).toBe('complete');
   });
 
-  it('clearMessages resets to empty array and aborts in-flight request', () => {
-    mockSearchPatientChart.mockReturnValue(new Promise(() => {}));
+  it('carries blocks from streaming done onto the message', async () => {
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
     act(() => {
-      result.current.submitQuestion('patient-uuid', 'Question?');
+      result.current.submitQuestion('patient-uuid', 'List meds');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+
+    const finalResponse = {
+      answer: 'See table.',
+      references: [{ index: 1, resourceType: 'order', resourceUuid: 'uuid-100', date: '2024-01-01' }],
+      blocks: [
+        {
+          kind: 'table' as const,
+          title: 'Medications',
+          columns: [{ key: 'name', label: 'Medication' }],
+          rows: [{ cells: { name: { text: 'Lisinopril', refs: [1] } } }],
+        },
+      ],
+      session: 'srv-session-1',
+      messageId: 'msg-blocks',
+    };
+
+    act(() => {
+      callbacks.onDone(finalResponse);
     });
 
-    const abortController = mockSearchPatientChart.mock.calls[0][2] as AbortController;
+    expect(result.current.messages[0].blocks).toEqual(finalResponse.blocks);
+  });
+
+  it('hydrates blocks from chat history rows so reloads restore tables', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-h',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'List meds', createdAt: 1 },
+        {
+          messageId: 'a-1',
+          role: 'assistant',
+          content: 'See table.',
+          blocks: [
+            {
+              kind: 'table',
+              title: 'Medications',
+              columns: [{ key: 'name', label: 'Medication' }],
+              rows: [{ cells: { name: { text: 'Lisinopril', refs: [1] } } }],
+            },
+          ],
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].answer).toBe('See table.');
+    expect(result.current.messages[0].blocks).toHaveLength(1);
+    expect(result.current.messages[0].blocks?.[0].title).toBe('Medications');
+  });
+
+  it('hydrates safetyWarnings from chat history rows so reloads restore the safety chips', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-sw',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'Is ibuprofen safe?', createdAt: 1 },
+        {
+          messageId: 'a-1',
+          role: 'assistant',
+          content: 'Ibuprofen is an option [1].',
+          safetyWarnings: [
+            { type: 'contraindication', drug: 'Ibuprofen', detail: 'the patient has a recorded allergy to Ibuprofen' },
+          ],
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].safetyWarnings).toEqual([
+      { type: 'contraindication', drug: 'Ibuprofen', detail: 'the patient has a recorded allergy to Ibuprofen' },
+    ]);
+  });
+
+  it('sets error on streaming onError', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What meds?');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      callbacks.onError('Stream failed');
+    });
+
+    expect(result.current.messages[0].error).toBe('Stream failed');
+    expect(result.current.messages[0].phase).toBe('error');
+    expect(result.current.isAwaitingAnswer).toBe(false);
+  });
+
+  it('clearMessages resets to empty array and aborts in-flight request', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q?');
+    });
+
+    const abortController = mockChatStream.mock.calls[0][4] as AbortController;
     expect(result.current.messages).toHaveLength(1);
     expect(abortController.signal.aborted).toBe(false);
 
@@ -386,87 +277,61 @@ describe('useChartSearchAi', () => {
     });
 
     expect(result.current.messages).toEqual([]);
-    expect(result.current.isAnyLoading).toBe(false);
+    expect(result.current.isAwaitingAnswer).toBe(false);
     expect(abortController.signal.aborted).toBe(true);
   });
 
-  it('stopCurrent preserves history of completed messages when second message has partial answer', async () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
+  it('stopCurrent preserves partial answer and keeps prior message history', async () => {
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
-    // First question resolves via streaming
     act(() => {
       result.current.submitQuestion('patient-uuid', 'First?');
     });
-    const firstCallbacks = mockSearchPatientChartStream.mock.calls[0][2];
+    const firstCallbacks = mockChatStream.mock.calls[0][3];
     act(() => {
-      firstCallbacks.onDone({ answer: 'Answer.', references: [], questionId: 'q-1' });
+      firstCallbacks.onDone({ answer: 'Answer.', references: [], session: 's', messageId: 'm-1' });
     });
 
-    // Second question — receives a partial token then hangs
     act(() => {
       result.current.submitQuestion('patient-uuid', 'Second?');
     });
-    const secondCallbacks = mockSearchPatientChartStream.mock.calls[1][2];
+    const secondCallbacks = mockChatStream.mock.calls[1][3];
     act(() => {
-      secondCallbacks.onThinking('Still thinking...');
-      secondCallbacks.onToken('Partial...');
+      // Answer has landed (whole, via answer_done) and in-depth is generating; the user stops here.
+      secondCallbacks.onAnswerDone({ answer: 'Partial answer.', references: [], messageId: 'm-2' });
     });
 
     expect(result.current.messages).toHaveLength(2);
-    expect(result.current.messages[1].answer).toBe('Partial...');
+    expect(result.current.messages[1].answer).toBe('Partial answer.');
 
     act(() => {
       result.current.stopCurrent();
     });
 
-    // Partial-answer message is kept; first message history preserved
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[0].answer).toBe('Answer.');
-    expect(result.current.messages[1].isLoading).toBe(false);
-    expect(result.current.messages[1].answer).toBe('Partial...');
-    // The settled message keeps no leftover reasoning scratchpad (mirrors `done`).
-    expect(result.current.messages[1].reasoning).toBe('');
-  });
-
-  it('stopCurrent aborts the in-flight request', async () => {
-    const response = { answer: 'Answer.', references: [], questionId: 'q-1' };
-    mockSearchPatientChart.mockResolvedValue(response);
-    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'First?');
-    });
-
-    mockSearchPatientChart.mockReturnValue(new Promise(() => {}));
-    act(() => {
-      result.current.submitQuestion('patient-uuid', 'Second?');
-    });
-
-    const abortController = mockSearchPatientChart.mock.calls[1][2] as AbortController;
-    expect(abortController.signal.aborted).toBe(false);
-
-    act(() => {
-      result.current.stopCurrent();
-    });
-
-    expect(abortController.signal.aborted).toBe(true);
+    expect(result.current.messages[1].phase).toBe('complete');
+    expect(result.current.messages[1].answer).toBe('Partial answer.');
   });
 
   it('stopCurrent removes the message bubble when no answer was received', async () => {
-    const response = { answer: 'Answer.', references: [], questionId: 'q-1' };
-    mockSearchPatientChart.mockResolvedValue(response);
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
-    await act(async () => {
+    act(() => {
       result.current.submitQuestion('patient-uuid', 'First?');
     });
+    const firstCallbacks = mockChatStream.mock.calls[0][3];
+    act(() => {
+      firstCallbacks.onDone({ answer: 'Answer.', references: [], session: 's', messageId: 'm-1' });
+    });
 
-    mockSearchPatientChart.mockReturnValue(new Promise(() => {}));
     act(() => {
       result.current.submitQuestion('patient-uuid', 'Second?');
     });
-
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[1].answer).toBe('');
 
@@ -474,14 +339,14 @@ describe('useChartSearchAi', () => {
       result.current.stopCurrent();
     });
 
-    // Empty-answer message is removed; history of first message preserved
     expect(result.current.messages).toHaveLength(1);
     expect(result.current.messages[0].answer).toBe('Answer.');
   });
 
-  it('drops a second submitQuestion call while the first is in flight', () => {
-    mockSearchPatientChart.mockReturnValue(new Promise(() => {}));
+  it('drops a second submitQuestion call while the first is in flight', async () => {
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
     act(() => {
       result.current.submitQuestion('patient-uuid', 'First?');
@@ -489,53 +354,255 @@ describe('useChartSearchAi', () => {
     });
 
     expect(result.current.messages).toHaveLength(1);
-    expect(mockSearchPatientChart).toHaveBeenCalledTimes(1);
+    expect(mockChatStream).toHaveBeenCalledTimes(1);
   });
 
-  it('sets error on streaming onError', () => {
-    mockUseConfig.mockReturnValue({ useStreaming: true });
+  it('startNewChatSession clears local state and opens a fresh server session', async () => {
+    mockStartNewChat.mockResolvedValue({ session: 'srv-session-2', messages: [] });
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    // Seed state via a completed turn
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q?');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+    act(() => {
+      callbacks.onSession('srv-session-1');
+      callbacks.onDone({ answer: 'A.', references: [], session: 'srv-session-1', messageId: 'm-1' });
+    });
+    expect(result.current.messages).toHaveLength(1);
+
+    await act(async () => {
+      result.current.startNewChatSession('patient-uuid');
+    });
+
+    expect(result.current.messages).toEqual([]);
+    expect(mockStartNewChat).toHaveBeenCalledWith('patient-uuid');
+    await waitFor(() => expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-2'));
+  });
+
+  it('aborts in-flight request on unmount', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result, unmount } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Question?');
+    });
+
+    const abortController = mockChatStream.mock.calls[0][4] as AbortController;
+    expect(abortController.signal.aborted).toBe(false);
+
+    unmount();
+    expect(abortController.signal.aborted).toBe(true);
+  });
+
+  it('records the resolved model from the streaming done event onto the message', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Summary?');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      callbacks.onDone({
+        answer: 'Done.',
+        references: [],
+        session: 's',
+        messageId: 'm-1',
+        resolvedModel: 'med-agent-team',
+      });
+    });
+
+    expect(result.current.messages[0].resolvedModel).toBe('med-agent-team');
+  });
+
+  it('passes the picker selection as the per-request backend override', async () => {
+    mockChatStream.mockImplementation(() => {});
+    chatSessionStore.setState({
+      selectedProfileId: 'team-med-checked',
+    });
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
     act(() => {
       result.current.submitQuestion('patient-uuid', 'What meds?');
     });
 
-    const callbacks = mockSearchPatientChartStream.mock.calls[0][2];
-
-    act(() => {
-      callbacks.onError('Stream failed');
-    });
-
-    expect(result.current.messages[0].error).toBe('Stream failed');
-    expect(result.current.messages[0].isLoading).toBe(false);
-    expect(result.current.isAnyLoading).toBe(false);
+    expect(mockChatStream).toHaveBeenLastCalledWith(
+      'patient-uuid',
+      expect.anything(),
+      'What meds?',
+      expect.any(Object),
+      expect.any(AbortController),
+      'team-med-checked',
+    );
   });
 
-  it('ignores AbortError on cancelled requests', async () => {
-    const abortError = new DOMException('Aborted', 'AbortError');
-    mockSearchPatientChart.mockRejectedValue(abortError);
-
+  // The single source of truth: one explicit `phase` per turn that mirrors the backend staged
+  // SSE events. Everything else (composer lock, section split, DOM signals) derives from it.
+  it('tracks the turn phase through the staged lifecycle', async () => {
+    mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
-
-    await act(async () => {
-      result.current.submitQuestion('patient-uuid', 'Question?');
-    });
-
-    expect(result.current.messages[0]?.error).toBeNull();
-  });
-
-  it('aborts in-flight request on unmount', () => {
-    mockSearchPatientChart.mockReturnValue(new Promise(() => {}));
-    const { result, unmount } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
 
     act(() => {
-      result.current.submitQuestion('patient-uuid', 'Question?');
+      result.current.submitQuestion('patient-uuid', 'Q1?');
+    });
+    const cb = mockChatStream.mock.calls[0][3];
+    const phase = () => result.current.messages[0].phase;
+
+    expect(phase()).toBe('answering');
+
+    act(() =>
+      cb.onAnswerDone({
+        answer: 'Aspirin [1].',
+        references: [],
+        answerValidation: { status: 'validating', label: 'Checking answer' },
+        messageId: 'm-1',
+      }),
+    );
+    expect(phase()).toBe('validating');
+
+    act(() =>
+      cb.onAnswerValidation({
+        answer: 'Aspirin [1].',
+        references: [],
+        answerValidation: { status: 'checked', label: 'Checked' },
+        messageId: 'm-1',
+      }),
+    );
+    expect(phase()).toBe('settled');
+
+    // indepth_pending (not a token) is what moves the turn into the 'in-depth' phase — the hub
+    // delivers the in-depth answer whole on indepth_done, it does not token-stream it.
+    act(() => cb.onInDepthPending({ messageId: 'm-1', inDepth: { status: 'pending', answer: '' } }));
+    expect(phase()).toBe('in-depth');
+
+    act(() => cb.onInDepthDone({ status: 'complete', answer: 'In-depth detail.' }));
+    expect(phase()).toBe('complete');
+  });
+
+  it('settles immediately at answer_done when no validation is pending (no validator configured)', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q?');
+    });
+    // answer_done with NO answerValidation → no validation phase is coming; settle now so the composer
+    // unlocks (mirrors the hub emitting answer_done without a `validating` status when no validator).
+    act(() =>
+      mockChatStream.mock.calls[0][3].onAnswerDone({
+        answer: 'A [1].',
+        references: [],
+        inDepth: { status: 'pending', answer: '' },
+        messageId: 'm-1',
+      }),
+    );
+
+    expect(result.current.messages[0].phase).toBe('settled');
+    expect(result.current.isAwaitingAnswer).toBe(false);
+  });
+
+  it('moves to error phase when answer generation fails', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q?');
+    });
+    act(() => mockChatStream.mock.calls[0][3].onError('Stream failed'));
+
+    expect(result.current.messages[0].phase).toBe('error');
+  });
+
+  // Interactive-first: the answer settles (answer + validation) BEFORE the terminal `done`, while
+  // in-depth is still generating. isAwaitingAnswer must drop then (unlocking the composer) even
+  // though the turn is still running through to `done`.
+  it('drops isAwaitingAnswer once the answer settles while in-depth still generates', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q1?');
+    });
+    const cb = mockChatStream.mock.calls[0][3];
+
+    // Still producing the answer → awaiting.
+    expect(result.current.isAwaitingAnswer).toBe(true);
+    expect(result.current.messages[0].phase).toBe('answering');
+
+    act(() => {
+      cb.onAnswerDone({ answer: 'A1', references: [], messageId: 'm-1' });
+      cb.onAnswerValidation({
+        answer: 'A1 checked',
+        references: [],
+        answerValidation: { status: 'checked', label: 'Checked' },
+        messageId: 'm-1',
+      });
+      cb.onInDepthPending({ messageId: 'm-1', inDepth: { status: 'pending', answer: '' } });
     });
 
-    const abortController = mockSearchPatientChart.mock.calls[0][2] as AbortController;
-    expect(abortController.signal.aborted).toBe(false);
+    // Answer settled + in-depth generating: composer unlocks, but the turn is still running.
+    expect(result.current.isAwaitingAnswer).toBe(false);
+    expect(result.current.messages[0].phase).toBe('in-depth');
 
-    unmount();
-    expect(abortController.signal.aborted).toBe(true);
+    act(() => {
+      cb.onDone({ answer: 'A1 checked', references: [], session: 's', messageId: 'm-1' });
+    });
+    expect(result.current.messages[0].phase).toBe('complete');
+  });
+
+  it('preempts the trailing in-depth when a new question is submitted after the answer settles', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q1?');
+    });
+    const firstController = mockChatStream.mock.calls[0][4] as AbortController;
+    const cb1 = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      cb1.onAnswerDone({ answer: 'A1', references: [], messageId: 'm-1' });
+      cb1.onAnswerValidation({
+        answer: 'A1 checked',
+        references: [],
+        answerValidation: { status: 'checked', label: 'Checked' },
+        messageId: 'm-1',
+      });
+      cb1.onInDepthPending({ messageId: 'm-1', inDepth: { status: 'pending', answer: 'Partial in-depth.' } });
+    });
+
+    // New question while in-depth generates → preempt the first turn and start the second.
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q2?');
+    });
+
+    expect(mockChatStream).toHaveBeenCalledTimes(2);
+    expect(firstController.signal.aborted).toBe(true);
+    expect(result.current.messages).toHaveLength(2);
+
+    // Q1 is finalized, keeping the partial in-depth (marked complete, no perpetual spinner).
+    const q1 = result.current.messages[0];
+    expect(q1.phase).toBe('complete');
+    expect(q1.answer).toBe('A1 checked');
+    expect(q1.inDepth).toEqual({ status: 'complete', answer: 'Partial in-depth.' });
+
+    // Q2 is the new in-flight turn.
+    const q2 = result.current.messages[1];
+    expect(q2.question).toBe('Q2?');
+    expect(q2.phase).toBe('answering');
+    expect(result.current.isAwaitingAnswer).toBe(true);
   });
 });

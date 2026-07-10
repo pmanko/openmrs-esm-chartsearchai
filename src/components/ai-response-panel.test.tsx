@@ -37,7 +37,7 @@ describe('AiResponsePanel reference links', () => {
         references={references}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -68,6 +68,34 @@ describe('AiResponsePanel reference links', () => {
     expect(diagnosisLink).toHaveAttribute('href', `/openmrs/spa/patient/${patientUuid}/chart/Visits`);
   });
 
+  it('renders resolved hub references as evidence tiles with source text', () => {
+    render(
+      <AiResponsePanel
+        answer="The last visit was documented on 2026-01-26 [4]."
+        references={[
+          {
+            index: 4,
+            resourceType: 'encounter',
+            resourceUuid: 'enc-4',
+            date: '2026-01-26',
+            sourceText: 'Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower',
+          },
+        ]}
+        questionId="test-question-id"
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Evidence Used')).toBeInTheDocument();
+    expect(screen.getByText('[4] · encounter · 2026-01-26')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/UUID: enc-4/)).toBeInTheDocument();
+  });
+
   it('passes the resource UUID (not a numeric id) to highlightReference when a citation is clicked', () => {
     render(
       <AiResponsePanel
@@ -75,7 +103,7 @@ describe('AiResponsePanel reference links', () => {
         references={references}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -95,7 +123,7 @@ describe('AiResponsePanel reference links', () => {
         references={references}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -130,7 +158,7 @@ describe('AiResponsePanel reference links', () => {
         references={refs}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -153,7 +181,7 @@ describe('AiResponsePanel reference links', () => {
         references={refs}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -177,7 +205,7 @@ describe('AiResponsePanel reference links', () => {
         references={unknownRef}
         questionId="test-question-id"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -194,13 +222,82 @@ describe('AiResponsePanel reference links', () => {
         references={[]}
         questionId="test-question-id"
         error="Server error: 500"
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
 
     expect(screen.getByText('Server error: 500')).toBeInTheDocument();
     expect(screen.queryByText(/Response interrupted/)).not.toBeInTheDocument();
+  });
+
+  it('renders a Carbon DataTable below the prose when blocks are present', () => {
+    const refs = [
+      { index: 1, resourceType: 'order', resourceUuid: 'uuid-100', date: '2024-01-01' },
+      { index: 2, resourceType: 'order', resourceUuid: 'uuid-200', date: '2024-02-01' },
+    ];
+    const blocks = [
+      {
+        kind: 'table' as const,
+        title: 'Medications',
+        columns: [
+          { key: 'name', label: 'Medication' },
+          { key: 'dose', label: 'Dose' },
+        ],
+        rows: [
+          { cells: { name: { text: 'Lisinopril', refs: [1] }, dose: { text: '10 mg' } } },
+          { cells: { name: { text: 'Metformin', refs: [2] }, dose: { text: '500 mg' } } },
+        ],
+      },
+    ];
+
+    render(
+      <AiResponsePanel
+        answer="See table for medications."
+        references={refs}
+        blocks={blocks}
+        questionId="q-blocks"
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    // Prose answer still renders
+    expect(screen.getByText(/See table for medications/)).toBeInTheDocument();
+    // Table title + headers + rows render
+    expect(screen.getByText('Medications')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Medication' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Dose' })).toBeInTheDocument();
+    expect(screen.getByText('Lisinopril')).toBeInTheDocument();
+    expect(screen.getByText('Metformin')).toBeInTheDocument();
+    expect(screen.getByText('10 mg')).toBeInTheDocument();
+    expect(screen.getByText('500 mg')).toBeInTheDocument();
+  });
+
+  it('does NOT render table blocks while answer is still streaming', () => {
+    const blocks = [
+      {
+        kind: 'table' as const,
+        title: 'Stale',
+        columns: [{ key: 'a', label: 'A' }],
+        rows: [{ cells: { a: { text: 'should-not-show' } } }],
+      },
+    ];
+    render(
+      <AiResponsePanel
+        answer="Still typing"
+        references={[]}
+        blocks={blocks}
+        questionId=""
+        error={null}
+        phase="answering"
+        patientUuid={patientUuid}
+      />,
+    );
+    // The streaming-time render only shows prose; blocks land atomically once done.
+    expect(screen.queryByText('Stale')).not.toBeInTheDocument();
+    expect(screen.queryByText('should-not-show')).not.toBeInTheDocument();
   });
 
   it('localizes the session-expired error code (does not render the raw code)', () => {
@@ -210,7 +307,7 @@ describe('AiResponsePanel reference links', () => {
         references={[]}
         questionId="test-question-id"
         error={SESSION_EXPIRED_ERROR_CODE}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -227,7 +324,7 @@ describe('AiResponsePanel reference links', () => {
         references={[]}
         questionId="test-question-id"
         error="Connection lost"
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -241,14 +338,26 @@ describe('AiResponsePanel reference links', () => {
 describe('AiResponsePanel citation grounding', () => {
   const answer = 'The patient has a finding [1].';
 
-  function renderWithGrounded(grounded: boolean | null) {
+  function renderWithGrounded(
+    grounded: boolean | null,
+    groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked',
+  ) {
     render(
       <AiResponsePanel
         answer={answer}
-        references={[{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-101', date: '2025-01-15', grounded }]}
+        references={[
+          {
+            index: 1,
+            resourceType: 'obs',
+            resourceUuid: 'uuid-101',
+            date: '2025-01-15',
+            grounded,
+            groundingStatus,
+          },
+        ]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -276,6 +385,13 @@ describe('AiResponsePanel citation grounding', () => {
     // plain inline citation, no warning glyph
     expect(screen.getByRole('link', { name: '1' })).toBeInTheDocument();
   });
+
+  it('shows a checking badge while citation grounding is pending', () => {
+    renderWithGrounded(null, 'checking');
+    expect(screen.getByText('Checking')).toBeInTheDocument();
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unsupported')).not.toBeInTheDocument();
+  });
 });
 
 describe('AiResponsePanel drug-reference citations', () => {
@@ -288,7 +404,7 @@ describe('AiResponsePanel drug-reference citations', () => {
         references={references}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -313,7 +429,7 @@ describe('AiResponsePanel drug-reference citations', () => {
         references={refs}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -340,7 +456,7 @@ describe('AiResponsePanel safety warnings', () => {
         ]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -365,7 +481,7 @@ describe('AiResponsePanel safety warnings', () => {
         ]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -383,7 +499,7 @@ describe('AiResponsePanel safety warnings', () => {
         safetyWarnings={[]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -399,7 +515,7 @@ describe('AiResponsePanel safety warnings', () => {
         safetyWarnings={[{ type: 'future-unknown-type', drug: 'Ibuprofen', detail: 'a new advisory kind' }]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -418,7 +534,7 @@ describe('AiResponsePanel safety warnings', () => {
         safetyWarnings={[{ type: 'overdose', drug: 'Ibuprofen', detail: 'exceeds the maximum' }]}
         questionId="q"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -453,7 +569,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={true}
+        phase="answering"
         patientUuid={patientUuid}
       />,
     );
@@ -468,7 +584,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -483,7 +599,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -501,7 +617,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
         references={references}
         questionId="q1"
         error={null}
-        isLoading={false}
+        phase="complete"
         patientUuid={patientUuid}
       />,
     );
@@ -509,5 +625,164 @@ describe('AiResponsePanel copy-to-clipboard', () => {
     fireEvent.click(screen.getByRole('button', { name: /copy/i }));
 
     expect(writeText).toHaveBeenCalledWith('Findings are notable.');
+  });
+});
+
+describe('AiResponsePanel model tag', () => {
+  it('renders a subtle tag with the resolved model once the answer is complete', () => {
+    render(
+      <AiResponsePanel
+        answer="Done."
+        references={[]}
+        questionId="q1"
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+        resolvedModel="med-agent-team"
+      />,
+    );
+
+    expect(screen.getByText('med-agent-team')).toBeInTheDocument();
+  });
+
+  it('does not render the model tag while the answer is still streaming', () => {
+    render(
+      <AiResponsePanel
+        answer="Partial"
+        references={[]}
+        questionId="q1"
+        error={null}
+        phase="answering"
+        patientUuid={patientUuid}
+        resolvedModel="med-agent-team"
+      />,
+    );
+
+    expect(screen.queryByText('med-agent-team')).not.toBeInTheDocument();
+  });
+
+  it('omits the model tag when no resolved model is provided', () => {
+    render(
+      <AiResponsePanel
+        answer="Done."
+        references={[]}
+        questionId="q1"
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.queryByText('med-agent-team')).not.toBeInTheDocument();
+  });
+});
+
+describe('AiResponsePanel staged in-depth status', () => {
+  // Two complementary DOM signals: data-turn-phase (the whole turn's coarse lifecycle) and
+  // data-indepth-status (the in-depth outcome). The three in-depth renderings otherwise share one
+  // testid, so these attributes are what makes the streaming/complete states distinguishable.
+  const stagedBase = {
+    answer: 'The patient is on metformin [1].',
+    references: [{ index: 1, resourceType: 'order', resourceUuid: 'u-1', date: '2025-01-01' }],
+    questionId: 'q1',
+    error: null,
+    patientUuid,
+    answerValidation: { status: 'checked' as const, label: 'Checked' },
+  };
+
+  it('exposes phase="in-depth" and data-indepth-status="pending" while the in-depth generates', () => {
+    const { container } = render(
+      <AiResponsePanel {...stagedBase} phase="in-depth" inDepth={{ status: 'pending', answer: 'generating…' }} />,
+    );
+    expect(container.querySelector('[data-turn-phase="in-depth"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="pending"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="complete"]')).not.toBeInTheDocument();
+  });
+
+  it('exposes phase="complete" and data-indepth-status="complete" once the in-depth finishes', () => {
+    const { container } = render(
+      <AiResponsePanel {...stagedBase} phase="complete" inDepth={{ status: 'complete', answer: 'Full detail [1].' }} />,
+    );
+    expect(container.querySelector('[data-turn-phase="complete"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="complete"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="pending"]')).not.toBeInTheDocument();
+  });
+
+  it('exposes phase="settled" (composer already unlocked) after validation, before in-depth begins', () => {
+    const { container } = render(
+      <AiResponsePanel {...stagedBase} phase="settled" inDepth={{ status: 'pending', answer: '' }} />,
+    );
+    expect(container.querySelector('[data-turn-phase="settled"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-indepth-status="pending"]')).toBeInTheDocument();
+  });
+});
+
+describe('AiResponsePanel per-section confidence', () => {
+  const baseProps = {
+    answer: '**Answer**\nHgb is 14.0 [1].\n\n**In Depth**\n- within range [1]',
+    references: [{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-101', date: '2025-11-24' }],
+    questionId: 'q1',
+    error: null,
+    phase: 'complete' as const,
+    patientUuid,
+  };
+
+  it('heads each section (Answer / In-Depth) with its confidence chip', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: { level: 'green', note: '' },
+          in_depth: { level: 'yellow', note: 'one claim regenerated' },
+        }}
+      />,
+    );
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('High confidence');
+    expect(screen.getByTestId('section-in-depth')).toHaveTextContent('Medium confidence');
+  });
+
+  it('YELLOW (med): shows the message, collapses the review note behind a reveal', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{ answer: { level: 'green' }, in_depth: { level: 'yellow', note: 'one claim regenerated' } }}
+      />,
+    );
+    const inDepth = screen.getByTestId('section-in-depth');
+    expect(inDepth).toHaveTextContent('within range'); // the message is shown
+    const details = inDepth.querySelector('details');
+    expect(details).toBeTruthy();
+    expect(details).toHaveTextContent(/show review note/i);
+    expect(details).toHaveTextContent('one claim regenerated'); // note is inside the collapse
+    expect(details).not.toHaveAttribute('open'); // collapsed by default
+  });
+
+  it('RED (low): shows the caveat note, WITHHOLDS the message behind "show <section>"', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{ answer: { level: 'green' }, in_depth: { level: 'red', note: 'supporting context unresolved' } }}
+      />,
+    );
+    const inDepth = screen.getByTestId('section-in-depth');
+    expect(inDepth).toHaveTextContent('Low confidence');
+    expect(inDepth).toHaveTextContent('supporting context unresolved'); // the caveat note is shown
+    const details = inDepth.querySelector('details');
+    expect(details).toBeTruthy();
+    expect(details).toHaveTextContent(/show in depth/i); // message collapsed behind the reveal
+    expect(details).not.toHaveAttribute('open');
+    // the green Answer section is shown with no collapse
+    expect(screen.getByTestId('section-answer').querySelector('details')).toBeNull();
+  });
+
+  it('renders no sections / chips when the backend sends no confidence (single model / parity)', () => {
+    render(<AiResponsePanel {...baseProps} />);
+    expect(screen.queryByTestId('section-answer')).not.toBeInTheDocument();
+    expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
+  });
+
+  it('does not split into sections while the answer is still streaming', () => {
+    render(<AiResponsePanel {...baseProps} phase="answering" confidence={{ answer: { level: 'red', note: 'x' } }} />);
+    expect(screen.queryByTestId('section-answer')).not.toBeInTheDocument();
   });
 });

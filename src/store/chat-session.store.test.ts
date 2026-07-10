@@ -4,7 +4,7 @@ import { chatSessionStore, setupChatSessionLogoutCleanup } from './chat-session.
 
 const sessionStore = getSessionStore();
 
-const seedMessages = () =>
+const seedSession = () =>
   chatSessionStore.setState({
     messagesByPatient: {
       'patient-1': [
@@ -15,53 +15,62 @@ const seedMessages = () =>
           references: [],
           safetyWarnings: [],
           questionId: '',
-          isLoading: false,
+          phase: 'complete',
           error: null,
-          reasoning: '',
         },
       ],
     },
+    sessionUuidByPatient: { 'patient-1': 'server-session-handle-1' },
+    selectedProfileId: 'single-e4b-checked',
   });
 
 beforeEach(() => {
-  chatSessionStore.setState({ messagesByPatient: {} });
+  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedProfileId: null });
   sessionStore.setState({ loaded: false, session: null });
 });
 
 describe('chatSessionStore logout cleanup', () => {
-  it('clears messages when the session transitions from a logged-in user to logged-out', () => {
+  it('clears all per-session state when the session transitions from a logged-in user to logged-out', () => {
     sessionStore.setState({
       loaded: true,
       session: { sessionId: 's1', authenticated: true, user: { uuid: 'user-1' } } as never,
     });
 
     const unsubscribe = setupChatSessionLogoutCleanup();
-    seedMessages();
+    seedSession();
 
     sessionStore.setState({
       loaded: true,
       session: { sessionId: '', authenticated: false } as never,
     });
 
-    expect(chatSessionStore.getState().messagesByPatient).toEqual({});
+    const state = chatSessionStore.getState();
+    expect(state.messagesByPatient).toEqual({});
+    expect(state.sessionUuidByPatient).toEqual({});
+    expect(state.selectedProfileId).toBeNull();
     unsubscribe();
   });
 
-  it('clears messages when a different user logs in', () => {
+  it('clears all per-session state when a different user logs in', () => {
     sessionStore.setState({
       loaded: true,
       session: { sessionId: 's1', authenticated: true, user: { uuid: 'user-1' } } as never,
     });
 
     const unsubscribe = setupChatSessionLogoutCleanup();
-    seedMessages();
+    seedSession();
 
     sessionStore.setState({
       loaded: true,
       session: { sessionId: 's2', authenticated: true, user: { uuid: 'user-2' } } as never,
     });
 
-    expect(chatSessionStore.getState().messagesByPatient).toEqual({});
+    const state = chatSessionStore.getState();
+    // Cross-user leak vectors: server session handle and picked profile must not
+    // bleed from user-1 into user-2's session.
+    expect(state.messagesByPatient).toEqual({});
+    expect(state.sessionUuidByPatient).toEqual({});
+    expect(state.selectedProfileId).toBeNull();
     unsubscribe();
   });
 
@@ -72,14 +81,17 @@ describe('chatSessionStore logout cleanup', () => {
     });
 
     const unsubscribe = setupChatSessionLogoutCleanup();
-    seedMessages();
+    seedSession();
 
     sessionStore.setState({
       loaded: true,
       session: { sessionId: 's1', authenticated: true, user: { uuid: 'user-1' } } as never,
     });
 
-    expect(chatSessionStore.getState().messagesByPatient).not.toEqual({});
+    const state = chatSessionStore.getState();
+    expect(state.messagesByPatient).not.toEqual({});
+    expect(state.sessionUuidByPatient).not.toEqual({});
+    expect(state.selectedProfileId).not.toBeNull();
     unsubscribe();
   });
 });

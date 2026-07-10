@@ -1,0 +1,22 @@
+@use '@carbon/layout';
+@use '@carbon/colors';
+@use '@carbon/type';
+
+.tableContainer {
+  display: flex;
+  flex-direction: column;
+  gap: layout.$spacing-02;
+  margin: layout.$spacing-03 0;
+  overflow-x: auto;
+}
+
+.tableTitle {
+  @include type.type-style('label-02');
+  color: colors.$gray-70;
+}
+
+.cellRefs {
+  margin-left: layout.$spacing-02;
+  color: colors.$gray-60;
+  white-space: nowrap;
+}

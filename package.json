@@ -39,7 +39,10 @@
     "url": "https://github.com/openmrs/openmrs-esm-chartsearchai/issues"
   },
   "dependencies": {
-    "@carbon/react": "^1.83.0"
+    "@carbon/react": "^1.83.0",
+    "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "peerDependencies": {
     "@openmrs/esm-framework": "*",

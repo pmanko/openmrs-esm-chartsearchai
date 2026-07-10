@@ -8,6 +8,103 @@
   gap: layout.$spacing-04;
 }
 
+// Per-section validator confidence — parity with the validate dashboard's confSection
+// inversion: red shows the caveat + collapses the message; yellow shows the message +
+// collapses the note; green shows the message. Chip/caveat colors mirror the dashboard,
+// adapted for the light chat surface.
+.csec {
+  margin-top: layout.$spacing-04;
+}
+
+.ctitle {
+  @include type.type-style('label-01');
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: colors.$gray-60;
+  margin-bottom: layout.$spacing-02;
+}
+
+.cchip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.625rem;
+  margin-left: layout.$spacing-02;
+  vertical-align: middle;
+}
+
+.answerValidation {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 0.625rem;
+  margin-left: layout.$spacing-02;
+  vertical-align: middle;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.answerValidation_validating {
+  background: #edf5ff;
+  color: #0043ce;
+  border: 1px solid #78a9ff;
+}
+
+.answerValidation_checked {
+  background: #defbe6;
+  color: #0e6027;
+  border: 1px solid #42be65;
+}
+
+.answerValidation_edited {
+  background: #fcf4d6;
+  color: #684e00;
+  border: 1px solid #f1c21b;
+}
+
+.answerValidation_needs_review {
+  background: #fff1f1;
+  color: #a2191f;
+  border: 1px solid #da1e28;
+}
+
+.answerValidation_unavailable {
+  background: colors.$gray-10;
+  color: colors.$gray-70;
+  border: 1px solid colors.$gray-30;
+}
+
+.caveat {
+  border-radius: 6px;
+  padding: layout.$spacing-03 layout.$spacing-04;
+  font-size: 0.75rem;
+  margin: layout.$spacing-02 0;
+}
+
+.caveatRed {
+  background: #fff1f1;
+  border: 1px solid #da1e28;
+  color: #a2191f;
+}
+
+.caveatYellow {
+  background: #fcf4d6;
+  border: 1px solid #f1c21b;
+  color: #684e00;
+}
+
+.collapse > summary {
+  cursor: pointer;
+  color: colors.$blue-60;
+  font-size: 0.6875rem;
+  padding: layout.$spacing-02 0;
+}
+
+.ans {
+  margin-top: layout.$spacing-02;
+}
+
 .answerSection {
   position: relative;
 }
@@ -20,12 +117,65 @@
   margin: 0;
 }
 
+// Rendered-markdown answer (headers / bold / lists) with inline citation chips.
+.markdownAnswer {
+  @include type.type-style('body-01');
+  color: colors.$gray-90;
+  line-height: 1.5;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  ul,
+  ol {
+    margin: layout.$spacing-02 0;
+    padding-left: layout.$spacing-06;
+  }
+
+  li {
+    margin-bottom: layout.$spacing-01;
+  }
+}
+
+.answerParagraph {
+  margin: 0 0 layout.$spacing-03 0;
+}
+
+.answerHeading {
+  @include type.type-style('heading-compact-01');
+  color: colors.$gray-100;
+  margin: layout.$spacing-04 0 layout.$spacing-02 0;
+}
+
 .actionsRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: layout.$spacing-03;
   margin-top: layout.$spacing-02;
+}
+
+.actionsLeft {
+  display: flex;
+  align-items: center;
+  gap: layout.$spacing-03;
+  min-width: 0;
+}
+
+// Subtle faded tag naming the hub product profile that produced this answer.
+.modelTag {
+  @include type.type-style('label-01');
+  color: colors.$gray-50;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 16rem;
 }
 
 .streamingIndicator {
@@ -121,6 +271,76 @@
 .groundedTag {
   display: inline-flex;
   align-items: center;
+}
+
+.evidenceSection {
+  display: flex;
+  flex-direction: column;
+  gap: layout.$spacing-03;
+  padding-top: layout.$spacing-02;
+}
+
+.evidenceSectionTitle {
+  @include type.type-style('label-01');
+  color: colors.$gray-60;
+}
+
+.evidenceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: layout.$spacing-03;
+}
+
+.evidenceCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: layout.$spacing-02;
+  padding: layout.$spacing-03;
+  border: 1px solid colors.$gray-20;
+  border-radius: 6px;
+  background: colors.$white-0;
+}
+
+.evidenceMeta,
+.evidenceUuid {
+  @include type.type-style('label-01');
+  color: colors.$gray-60;
+  overflow-wrap: anywhere;
+}
+
+.evidenceLink,
+.evidenceTitleText {
+  @include type.type-style('body-compact-01');
+  font-weight: 600;
+  color: colors.$gray-100;
+  overflow-wrap: anywhere;
+}
+
+.evidenceLink {
+  text-decoration: none;
+
+  &:hover {
+    color: colors.$blue-60;
+    text-decoration: underline;
+  }
+}
+
+.evidenceSource {
+  @include type.type-style('body-compact-01');
+  color: colors.$gray-80;
+  overflow-wrap: anywhere;
+}
+
+.evidenceMore {
+  margin-top: layout.$spacing-01;
+}
+
+.evidenceMore > summary {
+  cursor: pointer;
+  color: colors.$blue-60;
+  font-size: 0.6875rem;
+  padding: layout.$spacing-02 0;
 }
 
 // An inline citation pointing at injected drug-reference data (not a chart record).

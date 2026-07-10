@@ -1,0 +1,43 @@
+@use '@carbon/layout';
+
+// The popover itself is a Carbon Menu (portaled to document.body, viewport-
+// clamped) — no positioning lives here. This file only lays out the trigger row
+// and the (rare) switch-error notification beneath it.
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: layout.$spacing-02;
+}
+
+.triggerRow {
+  display: inline-flex;
+  align-items: center;
+  gap: layout.$spacing-02;
+}
+
+.loading {
+  min-height: auto;
+}
+
+.switchError {
+  min-width: 18rem;
+  max-width: 22rem;
+}
+
+// A disabled MenuItem used as a VISIBLE section header above each endpoint's
+// models (Carbon group labels are aria-only). Restyle it from a greyed-out
+// option into a small, non-interactive heading.
+.sectionHeader {
+  pointer-events: none;
+  min-height: auto;
+  opacity: 1;
+
+  :global(.cds--menu-item__label) {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    opacity: 1;
+  }
+}

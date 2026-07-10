@@ -11,22 +11,22 @@ export const configSchema = {
     _default: 1000,
     _description: 'Maximum number of characters allowed in a question',
   },
-  useStreaming: {
-    _type: Type.Boolean,
-    _default: true,
-    _description: 'Whether to use the streaming SSE endpoint for AI responses',
-  },
   chatLaunchMode: {
     _type: Type.String,
     _default: 'both',
     _description: 'Controls how the AI chat panel is launched. One of: "floating", "workspace", "both"',
     _validators: [validators.oneOf(['floating', 'workspace', 'both'])],
   },
+  showModelPicker: {
+    _type: Type.Boolean,
+    _default: true,
+    _description: 'Show the med-agent-hub product-profile picker in the chat panel footer.',
+  },
 };
 
 export interface ChartSearchAiConfig {
   aiSearchPlaceholder: string;
   maxQuestionLength: number;
-  useStreaming: boolean;
   chatLaunchMode: 'floating' | 'workspace' | 'both';
+  showModelPicker: boolean;
 }

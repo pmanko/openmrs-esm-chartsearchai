@@ -1,54 +1,68 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useConfig, useStore } from '@openmrs/esm-framework';
+import { useStore } from '@openmrs/esm-framework';
 import {
+  type AiBlock,
+  type AiAnswerValidation,
+  type AiConfidence,
+  type AiInDepth,
   type AiReference,
   type AiSafetyWarning,
   type AiSearchResponse,
-  searchPatientChart,
-  searchPatientChartStream,
+  type ChatHistoryMessage,
+  chatPatientChartStream,
+  fetchChatHistory,
+  startNewChat,
 } from '../api/chartsearchai';
-import { type ChartSearchAiConfig } from '../config-schema';
 import { chatSessionStore } from '../store/chat-session.store';
+import { type TurnPhase, isAwaitingAnswer as phaseIsAwaitingAnswer, isAnswerSettled, isTerminal } from './turn-phase';
 
 export interface ChatMessage {
   id: string;
   question: string;
   answer: string;
   references: AiReference[];
-  safetyWarnings: AiSafetyWarning[];
+  safetyWarnings?: AiSafetyWarning[];
+  blocks?: AiBlock[];
   questionId: string;
-  isLoading: boolean;
+  /**
+   * The turn's single lifecycle phase — the source of truth for composer behavior, section
+   * rendering, and DOM signals. Mirrors the backend staged SSE events (see {@link TurnPhase}).
+   */
+  phase: TurnPhase;
   error: string | null;
-  /** Live model reasoning while the answer is still being generated — a transient
-   *  "thinking" indicator, cleared when the answer completes. Never the answer. */
-  reasoning: string;
-  /** Transient PRELIMINARY reasoning from the progressive-reasoning preview pass (server GP
-   *  chartsearchai.progressiveReasoning.enabled): shown before {@link reasoning} on a slow host,
-   *  and provisional — REPLACED the moment real reasoning or the answer arrives, and never
-   *  persisted. Optional: only the streaming path sets it (always to '' first); it stays
-   *  absent/empty when progressive reasoning is off, so non-streaming fixtures need not supply it. */
-  preliminaryReasoning?: string;
+  /**
+   * The hub product profile that produced this answer. Surfaced as a subtle
+   * per-response tag. Undefined for older rows or system notices.
+   */
+  resolvedModel?: string;
+  /** Per-section validator confidence (green/yellow/red + note); validated hub tiers only. */
+  confidence?: AiConfidence;
+  /** Answer check lifecycle for staged validated responses. */
+  answerValidation?: AiAnswerValidation;
+  /** Product-profile In-Depth state attached to this assistant turn. */
+  inDepth?: AiInDepth;
 }
 
 interface UseChartSearchAiReturn {
   messages: ChatMessage[];
-  isAnyLoading: boolean;
+  /**
+   * The latest turn is still producing its direct answer ({@link TurnPhase} `answering`/`validating`).
+   * The composer disables on this — so a new question can be asked while the prior turn's in-depth is
+   * still streaming in the background.
+   */
+  isAwaitingAnswer: boolean;
   submitQuestion: (patientUuid: string, question: string) => void;
   clearMessages: () => void;
   stopCurrent: () => void;
+  /**
+   * Close the current server-side session for this patient and open a
+   * fresh one. Use for the "New chat" button.
+   */
+  startNewChatSession: (patientUuid: string) => void;
 }
 
 function generateId(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-}
-
-/** Removes citation markers ([3], [1, 2], …) from the progressive-reasoning PREVIEW text only.
- *  The preview reasons over an independently-numbered top-K focused chart, so its [N] markers do
- *  NOT line up with the committed answer's record numbering — showing them would mislead. Mirrors
- *  the citation regex in ai-response-panel's stripCitations, but WITHOUT trimming, since the preview
- *  is accumulated chunk-by-chunk and the trailing space must survive between chunks. */
-function stripPreviewCitations(text: string): string {
-  return text.replace(/\s?\[\d+(?:\s*,\s*\d+)*\]/g, '');
 }
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -58,12 +72,72 @@ function updateMessages(patientUuid: string, updater: (prev: ChatMessage[]) => C
   const prev = current[patientUuid] ?? EMPTY_MESSAGES;
   const next = updater(prev);
   if (next === prev) return;
-  chatSessionStore.setState({ messagesByPatient: { ...current, [patientUuid]: next } });
+  chatSessionStore.setState({ ...chatSessionStore.getState(), messagesByPatient: { ...current, [patientUuid]: next } });
+}
+
+function setSessionUuid(patientUuid: string, uuid: string | null): void {
+  const state = chatSessionStore.getState();
+  chatSessionStore.setState({
+    ...state,
+    sessionUuidByPatient: { ...state.sessionUuidByPatient, [patientUuid]: uuid },
+  });
+}
+
+/**
+ * Map a hydration row from the server's chat-history endpoint to a
+ * UI {@link ChatMessage}. Server stores user and assistant rows
+ * separately (one per turn); the UI groups them as Q+A pairs anchored
+ * on the user-message uuid as the row id.
+ */
+function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  let pending: ChatMessage | null = null;
+  for (const m of history) {
+    if (m.role === 'user') {
+      if (pending) {
+        // Two consecutive user messages — push the prior with empty answer.
+        // This is unusual (LLM call failed) but the UI must remain coherent.
+        out.push(pending);
+      }
+      pending = {
+        id: m.messageId,
+        question: m.content,
+        answer: '',
+        references: [],
+        questionId: '',
+        phase: 'complete',
+        error: null,
+      };
+    } else if (m.role === 'assistant') {
+      if (pending) {
+        pending.answer = m.content;
+        pending.blocks = m.blocks;
+        pending.safetyWarnings = m.safetyWarnings;
+        pending.confidence = m.confidence;
+        pending.answerValidation = m.answerValidation;
+        pending.inDepth = m.inDepth;
+        pending.references = m.references ?? [];
+        pending.questionId = m.messageId;
+        out.push(pending);
+        pending = null;
+      }
+      // Orphan assistant row without a preceding user — ignore (UI has no
+      // sane render for it); the row stays in the DB for audit purposes.
+    }
+    // 'system' rows are dropped — they belong to the LLM-prompt layer.
+  }
+  if (pending) {
+    out.push(pending);
+  }
+  return out;
+}
+
+function stripInDepthHeader(text: string): string {
+  return text.replace(/^\s*\*\*In ?Depth\*\*\s*/i, '').trimStart();
 }
 
 export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
-  const config = useConfig<ChartSearchAiConfig>();
-  const { messagesByPatient } = useStore(chatSessionStore);
+  const { messagesByPatient, sessionUuidByPatient } = useStore(chatSessionStore);
   const messages: ChatMessage[] = patientUuid ? (messagesByPatient[patientUuid] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES;
   const abortControllerRef = useRef<AbortController | null>(null);
   const inFlightMessageIdRef = useRef<string | null>(null);
@@ -74,6 +148,34 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       isMountedRef.current = false;
     };
   }, []);
+
+  // Hydrate on mount / patient change. Cleared if the patient has nothing
+  // server-side OR if hydration fails — in either case we start blank and
+  // the first submit creates a fresh session.
+  useEffect(() => {
+    if (!patientUuid) return;
+    if (messagesByPatient[patientUuid] && messagesByPatient[patientUuid].length > 0) {
+      // Local cache already populated (e.g. user just submitted a turn);
+      // skip the round-trip.
+      return;
+    }
+    const controller = new AbortController();
+    fetchChatHistory(patientUuid, controller)
+      .then((response) => {
+        if (!isMountedRef.current || controller.signal.aborted) return;
+        setSessionUuid(patientUuid, response.session ?? null);
+        const hydrated = hydrateMessages(response.messages ?? []);
+        if (hydrated.length > 0) {
+          updateMessages(patientUuid, () => hydrated);
+        }
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+        console.warn('[useChartSearchAi] hydrate failed; starting empty', err);
+      });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientUuid]);
 
   const clearMessages = useCallback(() => {
     if (patientUuid) {
@@ -98,21 +200,68 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         const idx = prev.findIndex((m) => m.id === stoppedId);
         if (idx === -1) return prev;
         const msg = prev[idx];
-        if (!msg.isLoading) return prev;
+        if (isTerminal(msg.phase)) return prev;
         if (!msg.answer) {
           return prev.filter((_, i) => i !== idx);
         }
         const updated = [...prev];
-        // Mirror `done`: a settled message keeps no reasoning scratchpad, even when stopped mid-stream.
-        updated[idx] = { ...msg, isLoading: false, reasoning: '', preliminaryReasoning: '' };
+        updated[idx] = { ...msg, phase: 'complete' };
         return updated;
       });
     }
   }, [patientUuid]);
 
+  const startNewChatSession = useCallback((patientUuid: string) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    inFlightMessageIdRef.current = null;
+    updateMessages(patientUuid, () => []);
+    setSessionUuid(patientUuid, null);
+    startNewChat(patientUuid)
+      .then((response) => {
+        if (!isMountedRef.current) return;
+        setSessionUuid(patientUuid, response.session ?? null);
+      })
+      .catch((err) => {
+        console.warn('[useChartSearchAi] startNewChat failed', err);
+      });
+  }, []);
+
   const submitQuestion = useCallback(
     (patientUuid: string, question: string) => {
-      if (abortControllerRef.current) return;
+      if (abortControllerRef.current) {
+        // A turn is still in flight. If its answer has NOT settled yet, don't start a second
+        // answer generation (one at a time — this is what keeps the server's getLastOrdinal()
+        // path single-flight and race-free). If the answer HAS settled and only the background
+        // in-depth is trailing, PREEMPT it so this new question starts immediately. The turn's
+        // phase is the single source of truth: isAnswerSettled once validation has landed.
+        const preemptedId = inFlightMessageIdRef.current;
+        const inFlight = preemptedId
+          ? (chatSessionStore.getState().messagesByPatient[patientUuid] ?? []).find((m) => m.id === preemptedId)
+          : undefined;
+        if (!inFlight || !isAnswerSettled(inFlight.phase)) return;
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+        inFlightMessageIdRef.current = null;
+        if (preemptedId) {
+          updateMessages(patientUuid, (prev) => {
+            const idx = prev.findIndex((m) => m.id === preemptedId);
+            if (idx === -1) return prev;
+            const msg = prev[idx];
+            if (isTerminal(msg.phase)) return prev;
+            const updated = [...prev];
+            // Keep whatever in-depth arrived so far, marked complete (no perpetual spinner).
+            updated[idx] = {
+              ...msg,
+              phase: 'complete',
+              inDepth: msg.inDepth ? { ...msg.inDepth, status: 'complete' } : msg.inDepth,
+            };
+            return updated;
+          });
+        }
+      }
 
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
@@ -122,12 +271,9 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         question,
         answer: '',
         references: [],
-        safetyWarnings: [],
         questionId: '',
-        isLoading: true,
+        phase: 'answering',
         error: null,
-        reasoning: '',
-        preliminaryReasoning: '',
       };
 
       updateMessages(patientUuid, (prev) => [...prev, newMessage]);
@@ -151,14 +297,22 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             answer: response.answer,
             references: response.references,
             safetyWarnings: response.safetyWarnings ?? [],
-            questionId: response.questionId ?? '',
-            isLoading: false,
-            // the scratchpad served its purpose as a live indicator; don't persist it
-            reasoning: '',
-            preliminaryReasoning: '',
+            blocks: response.blocks,
+            confidence: response.confidence,
+            answerValidation: response.answerValidation,
+            inDepth: response.inDepth,
+            questionId: response.messageId ?? response.questionId ?? '',
+            resolvedModel: response.resolvedModel,
+            phase: 'complete',
           };
           return updated;
         });
+        // Belt-and-braces: the X-ChartSearchAi-Session header captures the
+        // session uuid first, but the `done` event also carries it for
+        // sync clients that can't read response headers.
+        if (response.session) {
+          setSessionUuid(patientUuid, response.session);
+        }
       };
 
       const fail = (errMessage: string) => {
@@ -174,114 +328,147 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], error: errMessage, isLoading: false };
+          updated[idx] = { ...updated[idx], error: errMessage, phase: 'error' };
           return updated;
         });
       };
 
-      try {
-        if (config.useStreaming) {
-          searchPatientChartStream(
-            patientUuid,
-            question,
-            {
-              // Preliminary reasoning: the progressive-reasoning preview, shown before any real
-              // reasoning exists. Provisional — cleared the moment real reasoning or the answer
-              // arrives (see onThinking/onToken), so a wrong preview can't linger.
-              onPreliminary: (chunk) => {
-                if (!isMountedRef.current) return;
-                updateMessages(patientUuid, (prev) => {
-                  const idx = prev.findIndex((m) => m.id === messageId);
-                  if (idx === -1) return prev;
-                  const updated = [...prev];
-                  updated[idx] = {
-                    ...updated[idx],
-                    // strip the preview's [N] markers: they index the focused chart, not the
-                    // committed answer's records, so showing them would mislead.
-                    preliminaryReasoning: stripPreviewCitations((updated[idx].preliminaryReasoning ?? '') + chunk),
-                  };
-                  return updated;
-                });
-              },
-              // Live reasoning: shown while the model thinks, before any answer text exists.
-              onThinking: (chunk) => {
-                if (!isMountedRef.current) return;
-                updateMessages(patientUuid, (prev) => {
-                  const idx = prev.findIndex((m) => m.id === messageId);
-                  if (idx === -1) return prev;
-                  const updated = [...prev];
-                  updated[idx] = {
-                    ...updated[idx],
-                    reasoning: updated[idx].reasoning + chunk,
-                    // committed reasoning supersedes the provisional preview
-                    preliminaryReasoning: '',
-                  };
-                  return updated;
-                });
-              },
-              onToken: (token) => {
-                if (!isMountedRef.current) return;
-                updateMessages(patientUuid, (prev) => {
-                  const idx = prev.findIndex((m) => m.id === messageId);
-                  if (idx === -1) return prev;
-                  const updated = [...prev];
-                  updated[idx] = {
-                    ...updated[idx],
-                    answer: updated[idx].answer + token,
-                    // the answer supersedes any provisional preview reasoning
-                    preliminaryReasoning: '',
-                  };
-                  return updated;
-                });
-              },
-              // Show citations as soon as the server emits them (before grounding finishes).
-              // These carry no grounding verdict yet, so they render unverified; `done` then
-              // overwrites this message's references with the grounded set.
-              onReferences: (references) => {
-                if (!isMountedRef.current) return;
-                updateMessages(patientUuid, (prev) => {
-                  const idx = prev.findIndex((m) => m.id === messageId);
-                  if (idx === -1) return prev;
-                  const updated = [...prev];
-                  updated[idx] = { ...updated[idx], references };
-                  return updated;
-                });
-              },
-              onDone: done,
-              // Trailing verdicts (server runs async grounding): update the SAME message's
-              // references after done completed it. Deliberately NOT gated on isMountedRef —
-              // the chat store outlives the panel, and verdicts that arrive after the user
-              // closed it must still land so badges are correct when the panel reopens.
-              onGrounded: (references) => {
-                updateMessages(patientUuid, (prev) => {
-                  const idx = prev.findIndex((m) => m.id === messageId);
-                  if (idx === -1) return prev;
-                  const updated = [...prev];
-                  updated[idx] = { ...updated[idx], references };
-                  return updated;
-                });
-              },
-              onError: fail,
-            },
-            abortController,
-          );
-        } else {
-          searchPatientChart(patientUuid, question, abortController)
-            .then(done)
-            .catch((err) => {
-              if (err.name !== 'AbortError') {
-                console.error('[useChartSearchAi] Fetch failed:', err);
-                fail(err?.responseBody?.error ?? err?.message ?? 'An unknown error occurred');
-              }
-            });
+      const answerDone = (response: AiSearchResponse) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            answer: response.answer,
+            references: response.references,
+            safetyWarnings: response.safetyWarnings ?? [],
+            blocks: response.blocks,
+            confidence: response.confidence,
+            answerValidation: response.answerValidation,
+            inDepth: response.inDepth ?? { status: 'pending', answer: '' },
+            questionId: response.messageId ?? response.questionId ?? '',
+            resolvedModel: response.resolvedModel,
+            // Only enter the `validating` phase when a validation check is actually coming (the hub
+            // marks the answer_done with answerValidation.status === 'validating'). With no validator
+            // configured, no answer_validation event follows — settle immediately so the composer
+            // unlocks and there is no phantom "checking answer" state.
+            phase: response.answerValidation?.status === 'validating' ? 'validating' : 'settled',
+          };
+          return updated;
+        });
+        if (response.session) {
+          setSessionUuid(patientUuid, response.session);
         }
+      };
+
+      const answerValidation = (response: AiSearchResponse) => {
+        if (!isMountedRef.current) return;
+        // The answer + validation have landed; only in-depth remains. Moving to `settled` unlocks
+        // the composer AND makes this turn preemptable (submitQuestion reads the phase).
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            answer: response.answer,
+            references: response.references,
+            safetyWarnings: response.safetyWarnings ?? [],
+            blocks: response.blocks,
+            confidence: response.confidence,
+            answerValidation: response.answerValidation,
+            phase: 'settled',
+            questionId: response.messageId ?? response.questionId ?? updated[idx].questionId,
+            resolvedModel: response.resolvedModel ?? updated[idx].resolvedModel,
+          };
+          return updated;
+        });
+      };
+
+      const inDepthPending = (payload: { messageId?: string; inDepth?: AiInDepth }) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            questionId: payload.messageId ?? updated[idx].questionId,
+            // in-depth is now generating in the background (delivered whole on indepth_done — the hub
+            // does not token-stream). The composer is already unlocked; a new question preempts it.
+            phase: 'in-depth',
+            inDepth: payload.inDepth ?? { status: 'pending', answer: updated[idx].inDepth?.answer ?? '' },
+          };
+          return updated;
+        });
+      };
+
+      const inDepthDone = (inDepth: AiInDepth) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            phase: 'complete',
+            inDepth: { ...inDepth, answer: stripInDepthHeader(inDepth.answer ?? '') },
+          };
+          return updated;
+        });
+      };
+
+      const inDepthError = (inDepth: AiInDepth) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1) return prev;
+          const updated = [...prev];
+          // The direct answer is still available; only the background in-depth failed → terminal.
+          updated[idx] = {
+            ...updated[idx],
+            phase: 'complete',
+            inDepth: inDepth.status === 'failed' ? inDepth : { ...inDepth, status: 'failed' },
+          };
+          return updated;
+        });
+      };
+
+      const sessionUuid = sessionUuidByPatient[patientUuid] ?? null;
+      // Read the latest hub product-profile selection at submit time.
+      const selectedProfileId = chatSessionStore.getState().selectedProfileId;
+
+      try {
+        // Multi-turn streaming: chat history is reconstructed server-side
+        // from the session uuid; we only send the new question.
+        chatPatientChartStream(
+          patientUuid,
+          sessionUuid,
+          question,
+          {
+            onSession: (uuid) => {
+              setSessionUuid(patientUuid, uuid);
+            },
+            onAnswerDone: answerDone,
+            onAnswerValidation: answerValidation,
+            onInDepthPending: inDepthPending,
+            onInDepthDone: inDepthDone,
+            onInDepthError: inDepthError,
+            onDone: done,
+            onError: fail,
+          },
+          abortController,
+          selectedProfileId,
+        );
       } catch (err) {
         abortControllerRef.current = null;
         inFlightMessageIdRef.current = null;
         fail(err instanceof Error ? err.message : 'An unknown error occurred');
       }
     },
-    [config.useStreaming],
+    [sessionUuidByPatient],
   );
 
   useEffect(() => {
@@ -293,15 +480,19 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
     };
   }, []);
 
-  // Only the last message can ever be loading; submitQuestion guards against
-  // concurrent submits via abortControllerRef, so checking just the tail is sound.
-  const isAnyLoading = messages.length > 0 && messages[messages.length - 1].isLoading;
+  // Only the last message can ever be in flight; a new turn either blocks (answer not yet settled)
+  // or preempts the trailing in-depth, so checking just the tail is sound. The composer locks only
+  // while the direct answer is being produced (answering/validating) — a settled answer unlocks it
+  // even while in-depth still streams.
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
+  const isAwaitingAnswer = lastMessage ? phaseIsAwaitingAnswer(lastMessage.phase) : false;
 
   return {
     messages,
-    isAnyLoading,
+    isAwaitingAnswer,
     submitQuestion,
     clearMessages,
     stopCurrent,
+    startNewChatSession,
   };
 }

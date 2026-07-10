@@ -16,6 +16,15 @@
   max-height: 32rem;
 }
 
+// Maximized: fill the full-screen container (which is display:flex) instead of
+// the 32rem docked cap. Stronger elevation reads as a lifted modal surface.
+.chatRootFloatingExpanded {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+}
+
 .chatRootWorkspace {
   flex: 1;
   height: 100%;
@@ -30,6 +39,25 @@
   border-bottom: 1px solid colors.$gray-20;
   background-color: colors.$gray-10;
   flex-shrink: 0;
+}
+
+.panelHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: layout.$spacing-02;
+}
+
+.workspaceActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: layout.$spacing-03;
+  padding: layout.$spacing-02 layout.$spacing-05 0;
+  flex-shrink: 0;
+}
+
+.newChatLabel {
+  margin-left: layout.$spacing-02;
+  @include type.type-style('body-compact-01');
 }
 
 .panelTitle {
@@ -101,6 +129,19 @@
   border-radius: 0.25rem 1rem 1rem 1rem;
   padding: layout.$spacing-04 layout.$spacing-05;
   max-width: 95%;
+}
+
+.modelPickerRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  // Vertical: spacing-02 keeps the trigger from crowding the disclaimer above.
+  // Horizontal: spacing-06 on the right adds breathing room from the panel
+  // border — spacing-05 (matching .inputArea) put the chevron hard against
+  // the edge in floating mode at narrow widths.
+  padding: layout.$spacing-02 layout.$spacing-06 layout.$spacing-02 layout.$spacing-05;
+  // The picker hides itself when profile discovery is unavailable or disabled.
+  min-height: 0;
 }
 
 .inputArea {
@@ -231,34 +272,4 @@
   margin: 0;
   padding: layout.$spacing-02 layout.$spacing-05;
   flex-shrink: 0;
-}
-
-/* Live model reasoning shown under the Thinking... spinner before any answer text exists.
-   Deliberately subdued: it is scratchpad, not the answer. */
-.liveReasoning {
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  font-style: italic;
-  color: #6f6f6f;
-  white-space: pre-wrap;
-}
-
-/* Progressive-reasoning preview: visibly provisional (more subdued than liveReasoning) and
-   prefixed by a small badge, so a clinician reads it as a draft the committed answer replaces. */
-.preliminaryReasoning {
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  font-style: italic;
-  color: colors.$gray-50;
-  white-space: pre-wrap;
-  opacity: 0.85;
-}
-
-.preliminaryLabel {
-  font-style: normal;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  font-size: 0.6875rem;
-  color: colors.$gray-60;
 }

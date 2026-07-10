@@ -19,6 +19,8 @@ export interface AiReference {
    */
   resourceUuid: string;
   date: string;
+  /** Resolved source record text, when supplied by the hub staged path. */
+  sourceText?: string;
   /**
    * Citation grounding verdict from the backend: true = the cited record
    * supports the claim, false = it does not, null/absent = unverified
@@ -26,12 +28,16 @@ export interface AiReference {
    * never as "verified".
    */
   grounded?: boolean | null;
+  /**
+   * Lifecycle/status for citation grounding. `checking` means the backend has resolved
+   * the source record but final support verification is still running.
+   */
+  groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked';
 }
 
 /**
- * A non-blocking drug-safety advisory raised by the backend's post-answer validator
- * (only when the optional drug-reference feature is enabled). It annotates the answer
- * — it never alters it. Rendered as a chip below the answer.
+ * A non-blocking deterministic safety advisory emitted by med-agent-hub. It
+ * annotates the answer and is rendered as a chip below it.
  */
 export interface AiSafetyWarning {
   /** 'overdose' | 'interaction' | 'contraindication' */
@@ -42,12 +48,94 @@ export interface AiSafetyWarning {
   detail: string;
 }
 
+export interface AiCell {
+  text: string;
+  refs?: number[];
+}
+
+export interface AiTableColumn {
+  key: string;
+  label: string;
+}
+
+export interface AiTableBlock {
+  kind: 'table';
+  title?: string;
+  columns: AiTableColumn[];
+  rows: Array<{ cells: Record<string, AiCell> }>;
+}
+
+export type AiBlock = AiTableBlock;
+
+/** One section's validator confidence: a traffic-light level + an optional caveat note. */
+export interface AiConfidenceSection {
+  level: 'green' | 'yellow' | 'red';
+  note?: string;
+}
+
+/**
+ * Per-section confidence metadata emitted by the selected med-agent-hub profile.
+ */
+export interface AiConfidence {
+  answer?: AiConfidenceSection;
+  in_depth?: AiConfidenceSection;
+}
+
+export interface AiInDepth {
+  status: 'pending' | 'complete' | 'failed';
+  answer?: string;
+  error?: string;
+}
+
+export type AiAnswerValidationStatus = 'validating' | 'checked' | 'edited' | 'needs_review' | 'unavailable';
+
+export interface AiAnswerValidation {
+  status: AiAnswerValidationStatus;
+  label: string;
+  summary?: string;
+  issues?: unknown[];
+  completedAt?: string;
+  originalAnswer?: string;
+}
+
 export interface AiSearchResponse {
   answer: string;
   references: AiReference[];
-  /** Empty/absent unless the optional drug-reference feature is enabled on the server. */
+  /** Deterministic safety advisories emitted by the selected hub profile. */
   safetyWarnings?: AiSafetyWarning[];
+  blocks?: AiBlock[];
   questionId?: string;
+  /** Server-side conversation handle. Present on chat responses only. */
+  session?: string;
+  /** Server-assigned uuid for the assistant message row. Present on chat responses only. */
+  messageId?: string;
+  /** Product profile id that produced this answer. */
+  resolvedModel?: string;
+  /** Per-section validator confidence (green/yellow/red + note) from the validated hub tiers. */
+  confidence?: AiConfidence;
+  /** Clinician-facing answer check lifecycle for staged validated responses. */
+  answerValidation?: AiAnswerValidation;
+  /** In-Depth analysis attached after the direct answer settles. */
+  inDepth?: AiInDepth;
+}
+
+export interface ChatHistoryMessage {
+  messageId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  references?: AiReference[];
+  blocks?: AiBlock[];
+  /** Deterministic safety advisories emitted by the selected hub profile. */
+  safetyWarnings?: AiSafetyWarning[];
+  confidence?: AiConfidence;
+  answerValidation?: AiAnswerValidation;
+  inDepth?: AiInDepth;
+  createdAt: number;
+}
+
+export interface ChatHistoryResponse {
+  session: string;
+  messages: ChatHistoryMessage[];
 }
 
 export type FeedbackRating = 'positive' | 'negative';
@@ -56,27 +144,6 @@ export interface AiFeedback {
   questionId: string;
   rating: FeedbackRating;
   comment?: string;
-}
-
-export interface AiSearchError {
-  error: string;
-}
-
-/**
- * Pre-warms the server-side LLM prompt cache for the given patient. Fire-and-forget;
- * fired when the chart is opened so the first AI query skips full prefill cost. Pass
- * an AbortSignal to cancel an in-flight warmup when the user navigates to a different
- * patient before the previous warmup finished.
- */
-export function warmupPatient(patientUuid: string, signal?: AbortSignal): void {
-  openmrsFetch(`${BASE_PATH}/warmup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ patient: patientUuid }),
-    signal,
-  }).catch(() => {
-    // ignore — the user does not depend on this completing, and aborts are expected on patient switch
-  });
 }
 
 /**
@@ -96,78 +163,45 @@ export async function submitFeedback(feedback: AiFeedback): Promise<void> {
 }
 
 /**
- * Sends a synchronous AI search request.
- */
-export async function searchPatientChart(
-  patientUuid: string,
-  question: string,
-  abortController?: AbortController,
-): Promise<AiSearchResponse> {
-  const response = await openmrsFetch(`${BASE_PATH}/search`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ patient: patientUuid, question }),
-    signal: abortController?.signal,
-  });
-  if (!response.data?.answer) {
-    throw new Error('Unexpected response from server');
-  }
-  return response.data as AiSearchResponse;
-}
-
-/**
- * Opens an SSE (Server-Sent Events) stream for AI search.
+ * Streaming variant for multi-turn chat. SSE (Server-Sent Events) stream, parsed via raw
+ * fetch instead of openmrsFetch because openmrsFetch consumes the response body to parse
+ * it as JSON, which prevents streaming — we need direct access to response.body (the
+ * ReadableStream). The staged endpoint emits answer/validation/in-depth boundary events:
+ *   - sends an optional {@code session} uuid so the server can reuse the
+ *     prior conversation thread
+ *   - captures the server's {@code X-ChartSearchAi-Session} response header
+ *     and surfaces it via {@code onSession} before the first content event arrives
  *
- * Uses raw fetch instead of openmrsFetch because openmrsFetch consumes
- * the response body to parse it as JSON, which prevents streaming.
- * We need direct access to response.body (the ReadableStream).
+ * The server is the source of truth for conversation history — the client
+ * sends only the new user message, not the rendered transcript.
  */
-export function searchPatientChartStream(
+export function chatPatientChartStream(
   patientUuid: string,
+  sessionUuid: string | null,
   question: string,
   callbacks: {
-    onToken: (token: string) => void;
+    onSession: (uuid: string) => void;
+    onAnswerDone?: (response: AiSearchResponse) => void;
+    onAnswerValidation?: (response: AiSearchResponse) => void;
+    onInDepthPending?: (payload: { messageId?: string; inDepth?: AiInDepth }) => void;
+    onInDepthDone?: (inDepth: AiInDepth) => void;
+    onInDepthError?: (inDepth: AiInDepth) => void;
     onDone: (response: AiSearchResponse) => void;
     onError: (error: string) => void;
-    /**
-     * Early citations, emitted by the server the moment the answer's references are
-     * known — before the (slower) grounding pass attaches verdicts. Lets the UI show
-     * the citations immediately as unverified; the {@code done} event then re-sends
-     * the same references with their grounding verdicts. Optional and best-effort: a
-     * missing or malformed event is ignored, since {@code done} is authoritative.
-     */
-    onReferences?: (references: AiReference[]) => void;
-    /**
-     * Trailing grounding verdicts, emitted only when the server runs with
-     * {@code chartsearchai.grounding.async=true}: in that mode {@code done} arrives as soon
-     * as the answer is complete (its references carry no verdicts) and this event re-sends
-     * the same references with their {@code grounded} verdicts once the (slower) Tier-2
-     * verification finishes. Best-effort like {@code onReferences}: when the server runs in
-     * classic mode the event never arrives and {@code done}'s references are already final;
-     * a malformed payload just leaves citations rendered as unverified.
-     */
-    onGrounded?: (references: AiReference[]) => void;
-    /**
-     * Live reasoning ("thinking") chunks, streamed by the server before the answer so the
-     * UI can show progress and the model's rationale instead of a dead spinner during the
-     * reasoning phase. Scratchpad only — render distinctly (subdued, transient), never as
-     * the answer.
-     */
-    onThinking?: (chunk: string) => void;
-    /**
-     * Preliminary reasoning chunks from the optional progressive-reasoning preview pass (server
-     * GP {@code chartsearchai.progressiveReasoning.enabled}). Streamed before {@code onThinking}
-     * over only the top-K focused chart, so the UI can show reasoning almost immediately on a
-     * slow host. It is provisional and can be wrong until the committed full-chart reasoning
-     * arrives — render it distinctly (subdued/labelled as an in-progress preview, not the answer)
-     * and REPLACE it the moment the first {@code onThinking} (or {@code onToken}) chunk arrives.
-     * Never fires when the server GP is off.
-     */
-    onPreliminary?: (chunk: string) => void;
   },
   abortController?: AbortController,
+  profileId?: string | null,
 ): void {
-  const url = `${window.openmrsBase}${BASE_PATH}/search/stream`;
+  const url = `${window.openmrsBase}${BASE_PATH}/chat/stream`;
+  const body: Record<string, string> = { patient: patientUuid, question };
+  if (sessionUuid) {
+    body.session = sessionUuid;
+  }
+  // Product profile selection is the only client-controlled inference input.
+  // The Java relay owns the hub endpoint; med-agent-hub owns stage composition.
+  if (profileId) {
+    body.profile = profileId;
+  }
 
   window
     .fetch(url, {
@@ -177,42 +211,37 @@ export function searchPatientChartStream(
         Accept: 'text/event-stream',
         'Disable-WWW-Authenticate': 'true',
       },
-      body: JSON.stringify({ patient: patientUuid, question }),
+      body: JSON.stringify(body),
       credentials: 'include',
       redirect: 'manual',
       signal: abortController?.signal,
     })
     .then(async (response) => {
       if (response.type === 'opaqueredirect' || response.status === 0) {
-        callbacks.onError(SESSION_EXPIRED_ERROR_CODE);
+        callbacks.onError('Your session has expired. Please log in again.');
         return;
       }
 
       if (!response.ok) {
-        let bodyError: string | null = null;
+        let message = `Server error: ${response.status}`;
         try {
-          const body = await response.json();
-          if (body?.error) {
-            bodyError = body.error;
+          const errBody = await response.json();
+          if (errBody?.error) {
+            message = errBody.error;
           }
         } catch {
-          // non-JSON body (a bare container/auth response, not a controller error)
+          // no JSON body
         }
-        if (bodyError) {
-          // The controller always serializes its errors as JSON, so a parseable error is a genuine
-          // server-side failure — surface it verbatim.
-          callbacks.onError(bodyError);
-        } else if (response.status >= 500 || response.status === 401 || response.status === 403) {
-          // No JSON body means this came from OpenMRS's auth/session layer, not the controller:
-          // a 401/403, or a 500 that is really "sendRedirect() after the response was committed"
-          // (the SSE stream commits the response, so the expired-session login redirect can't fire
-          // and surfaces as a bare HTML 500). Treat all of these as session expiry — the same
-          // actionable cause as the 302 handled above — rather than a cryptic "Server error: 500".
-          callbacks.onError(SESSION_EXPIRED_ERROR_CODE);
-        } else {
-          callbacks.onError(`Server error: ${response.status}`);
-        }
+        callbacks.onError(message);
         return;
+      }
+
+      // Capture the session uuid the server pinned for this conversation
+      // before we start consuming the stream — the client uses it to thread
+      // subsequent posts onto the same conversation row.
+      const sessionHeader = response.headers.get('X-ChartSearchAi-Session');
+      if (sessionHeader) {
+        callbacks.onSession(sessionHeader);
       }
 
       const reader = response.body;
@@ -235,35 +264,44 @@ export function searchPatientChartStream(
           return;
         }
         const data = dataLines.join('\n');
-        if (eventType === 'token') {
-          callbacks.onToken(data);
-        } else if (eventType === 'thinking') {
-          callbacks.onThinking?.(data);
-        } else if (eventType === 'preliminary') {
-          callbacks.onPreliminary?.(data);
-        } else if (eventType === 'references') {
-          // Pre-grounding citations: best-effort, so a malformed payload is ignored rather
-          // than failing the stream — the authoritative references arrive with `done`.
+        if (eventType === 'answer_done') {
           try {
-            const parsed = JSON.parse(data);
-            callbacks.onReferences?.(parsed.references ?? []);
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            callbacks.onAnswerDone?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
           } catch {
-            // ignore; `done` is authoritative
+            callbacks.onError('Failed to parse staged answer response');
           }
-        } else if (eventType === 'grounded') {
-          // Post-done verdicts (async grounding). Best-effort: a malformed payload leaves
-          // the citations unverified rather than erroring an already-complete answer.
+        } else if (eventType === 'answer_validation') {
           try {
-            const parsed = JSON.parse(data);
-            callbacks.onGrounded?.(parsed.references ?? []);
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            callbacks.onAnswerValidation?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
           } catch {
-            // ignore; citations simply stay unverified
+            callbacks.onError('Failed to parse answer validation response');
+          }
+        } else if (eventType === 'indepth_pending') {
+          try {
+            callbacks.onInDepthPending?.(JSON.parse(data) as { messageId?: string; inDepth?: AiInDepth });
+          } catch {
+            callbacks.onError('Failed to parse in-depth pending response');
+          }
+        } else if (eventType === 'indepth_done') {
+          try {
+            callbacks.onInDepthDone?.(JSON.parse(data) as AiInDepth);
+          } catch {
+            callbacks.onError('Failed to parse in-depth response');
+          }
+        } else if (eventType === 'indepth_error') {
+          try {
+            callbacks.onInDepthError?.(JSON.parse(data) as AiInDepth);
+          } catch {
+            callbacks.onError('Failed to parse in-depth error response');
           }
         } else if (eventType === 'done') {
           streamFinalized = true;
           try {
-            const parsed: AiSearchResponse = JSON.parse(data);
-            callbacks.onDone(parsed);
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            // The backend sends the resolved model as `model`; surface it as resolvedModel.
+            callbacks.onDone({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
           } catch {
             callbacks.onError('Failed to parse final response');
           }
@@ -296,7 +334,6 @@ export function searchPatientChartStream(
         }
       }
 
-      // Process any remaining lines in the buffer (stream ended without trailing newline)
       if (buffer) {
         for (const line of buffer.split('\n')) {
           if (line === '') {
@@ -310,7 +347,6 @@ export function searchPatientChartStream(
         }
       }
 
-      // Flush any event accumulated in the loop but not yet dispatched
       dispatchEvent();
 
       if (!streamFinalized) {
@@ -322,4 +358,68 @@ export function searchPatientChartStream(
         callbacks.onError(err?.message ?? 'An unknown error occurred');
       }
     });
+}
+
+/**
+ * Hydrate the chat panel state on mount. Returns the active session
+ * (creating one if none exists) and its full message list in chronological
+ * order. Empty messages array on a freshly-created session.
+ */
+export async function fetchChatHistory(
+  patientUuid: string,
+  abortController?: AbortController,
+): Promise<ChatHistoryResponse> {
+  const response = await openmrsFetch(`${BASE_PATH}/chat?patient=${encodeURIComponent(patientUuid)}`, {
+    signal: abortController?.signal,
+  });
+  return response.data as ChatHistoryResponse;
+}
+
+/**
+ * Close the current active chat session for this (patient, user) pair
+ * and open a fresh one. Returns the new session uuid.
+ */
+export async function startNewChat(
+  patientUuid: string,
+  abortController?: AbortController,
+): Promise<ChatHistoryResponse> {
+  const response = await openmrsFetch(`${BASE_PATH}/chat/new`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ patient: patientUuid }),
+    signal: abortController?.signal,
+  });
+  return response.data as ChatHistoryResponse;
+}
+
+export interface HubProfileMetadata {
+  id: string;
+  label: string;
+  staged: boolean;
+  validation: boolean;
+  temporal_enforcement: 'off' | 'warn' | 'enforce' | string;
+  available: boolean;
+  default: boolean;
+  topology: 'single' | 'team' | string;
+  visibility: 'product' | 'internal' | 'experimental' | string;
+  stages: string[];
+  required_models: string[];
+  context_window: number | null;
+  exact_tokenizer: boolean;
+  unavailable_reasons: string[];
+}
+
+export interface HubProfileListResponse {
+  object: 'list' | string;
+  data: HubProfileMetadata[];
+}
+
+/**
+ * Relay med-agent-hub's authoritative profile metadata through ChartSearchAI.
+ */
+export async function fetchProfiles(abortController?: AbortController): Promise<HubProfileListResponse> {
+  const response = await openmrsFetch(`${BASE_PATH}/models`, {
+    signal: abortController?.signal,
+  });
+  return response.data as HubProfileListResponse;
 }

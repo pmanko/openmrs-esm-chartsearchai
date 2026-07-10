@@ -14,18 +14,15 @@ A floating AI button appears on the patient chart page. Clicking it opens a sear
 - "Has she ever had a bad reaction to penicillin?"
 - "Is her diabetes getting better or worse?"
 
-The module streams an answer token-by-token (via SSE) with numbered citations (e.g. `[1]`, `[2]`) that link back to the relevant section of the patient chart (Results, Orders, Allergies, etc.).
+The module receives staged SSE updates from the backend: the short answer arrives as one chunk, optional answer validation updates the same message, and in-depth analysis arrives as a later whole chunk. Numbered citations (e.g. `[1]`, `[2]`) link back to the relevant section of the patient chart (Results, Orders, Allergies, etc.).
 
-When the backend's optional [drug-reference feature](https://github.com/openmrs/openmrs-module-chartsearchai#drug-reference-injection--safety-validation) is enabled, the panel also shows non-blocking **safety-check** chips below the answer (overdose / interaction / contraindication) and renders drug-reference citations as distinct, non-navigating reference chips.
+When the selected med-agent-hub profile emits deterministic safety advisories, the panel shows non-blocking **safety-check** chips below the answer and renders knowledge-base citations as distinct, non-navigating reference chips.
 
 ## Backend
 
-This frontend requires the [Chart Search AI backend module](https://github.com/openmrs/openmrs-module-chartsearchai), which uses a RAG (Retrieval Augmented Generation) architecture:
+This frontend requires the [Chart Search AI backend module](https://github.com/openmrs/openmrs-module-chartsearchai). The Java module authorizes the patient request, persists the conversation, and relays one staged request to med-agent-hub. The hub owns profile composition, context sources, temporal and safety checks, answer review, citation grounding, and In-Depth generation.
 
-1. **Retrieval** -- patient records are embedded with all-MiniLM-L6-v2 (ONNX, CPU) and narrowed to the top-K most relevant via cosine similarity.
-2. **Generation** -- the filtered records are sent to a local GGUF LLM (default: Llama 3.3 8B via llama.cpp) with a system prompt that produces cited, structured answers.
-
-See the [backend README](https://github.com/openmrs/openmrs-module-chartsearchai#readme) for full setup instructions, model downloads, and global property configuration.
+The frontend renders those lifecycle and evidence states. It does not choose provider endpoints, compose model stages, or maintain a model catalog.
 
 ## Prerequisites
 
@@ -51,7 +48,7 @@ The following options can be set via the OpenMRS 3.x config system:
 |---|---|---|---|
 | `aiSearchPlaceholder` | `string` | `"Ask AI about this patient..."` | Placeholder text for the search input |
 | `maxQuestionLength` | `number` | `1000` | Maximum characters allowed in a question |
-| `useStreaming` | `boolean` | `true` | Use the SSE streaming endpoint for token-by-token responses |
+| `showModelPicker` | `boolean` | `true` | Show available med-agent-hub product profiles |
 
 ## API endpoints used
 
@@ -59,12 +56,15 @@ All endpoints are served by the backend module under `/ws/rest/v1/chartsearchai/
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/search` | Synchronous search (returns complete answer) |
-| POST | `/search/stream` | SSE streaming search (tokens streamed in real-time) |
+| POST | `/chat` | Synchronous chat turn (returns the complete answer) |
+| POST | `/chat/stream` | SSE staged chat turn (answer/validation/in-depth phase events; multi-turn via `session`) |
+| GET | `/chat` | Hydrate a patient's active session + prior messages |
+| POST | `/chat/new` | Close the active session and open a fresh one |
+| GET | `/models` | Relay med-agent-hub product-profile metadata |
 
-Request body: `{ "patient": "<uuid>", "question": "<text>" }`
+Request body: `{ "patient": "<uuid>", "question": "<text>", "session": "<uuid, optional>", "profile": "<hub product profile, optional>" }`
 
-Response:
+Response (`POST /chat`, and the final `done` event of `POST /chat/stream`):
 ```json
 {
   "answer": "The patient is currently on metformin [1] and lisinopril [2]...",
@@ -73,11 +73,19 @@ Response:
     { "index": 1, "resourceType": "order", "resourceUuid": "5946f880-b197-400b-9caa-a3c661d71165", "date": "2025-12-01" },
     { "index": 2, "resourceType": "order", "resourceUuid": "a8f5f167-4ee2-4d2a-94f9-3f3f86d2e9b6", "date": "2025-11-15" }
   ],
-  "safetyWarnings": []
+  "safetyWarnings": [],
+  "session": "session-uuid",
+  "messageId": "assistant-message-uuid"
 }
 ```
 
 `references[].resourceUuid` is the cited record's UUID (used to locate and highlight the chart row). `safetyWarnings` (each `{ type, drug, detail }`) is always present and empty unless the backend's optional drug-reference feature is enabled; the panel renders any entries as chips below the answer.
+
+Product profiles emit this staged sequence:
+`answer_done` (direct answer complete) → optional `answer_validation` (self-check result) →
+`indepth_pending` → `indepth_done` or `indepth_error` → `done`. The hub does not token-stream the
+answer or in-depth text; each content phase is delivered whole. See the
+[backend README's streaming chat docs](https://github.com/openmrs/openmrs-module-chartsearchai#streaming-chat-sse) for the full event reference.
 
 The required privilege is **AI Query Patient Data**.
 

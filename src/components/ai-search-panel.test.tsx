@@ -14,12 +14,12 @@ const mockClearMessages = vi.fn();
 const mockStopCurrent = vi.fn();
 
 let mockMessages: ChatMessage[] = [];
-let mockIsAnyLoading = false;
+let mockIsAwaitingAnswer = false;
 
 vi.mock('../hooks/useChartSearchAi', () => ({
   useChartSearchAi: () => ({
     messages: mockMessages,
-    isAnyLoading: mockIsAnyLoading,
+    isAwaitingAnswer: mockIsAwaitingAnswer,
     submitQuestion: mockSubmitQuestion,
     clearMessages: mockClearMessages,
     stopCurrent: mockStopCurrent,
@@ -51,6 +51,10 @@ vi.mock('../hooks/useSpeechRecognition', () => ({
 vi.mock('../api/chartsearchai', async (importActual) => ({
   ...(await importActual<typeof import('../api/chartsearchai')>()),
   submitFeedback: vi.fn().mockResolvedValue(undefined),
+  // ModelPicker (mounted inside AiChatContent) imports fetchProfiles. Reject it
+  // so the picker hides itself silently — keeps these tests focused on the panel
+  // flow, not the picker.
+  fetchProfiles: vi.fn().mockRejectedValue(new Error('not mocked')),
 }));
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
@@ -61,16 +65,15 @@ function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     references: [],
     safetyWarnings: [],
     questionId: 'q-1',
-    isLoading: false,
+    phase: 'complete',
     error: null,
-    reasoning: '',
     ...overrides,
   };
 }
 
 beforeEach(() => {
   mockMessages = [];
-  mockIsAnyLoading = false;
+  mockIsAwaitingAnswer = false;
   mockIsListening = false;
   mockIsSpeechSupported = false;
   mockSpeechError = null;
@@ -85,7 +88,6 @@ beforeEach(() => {
   mockUseConfig.mockReturnValue({
     aiSearchPlaceholder: 'Ask AI about this patient...',
     maxQuestionLength: 1000,
-    useStreaming: true,
   });
 
   mockUsePatient.mockReturnValue({
@@ -179,24 +181,24 @@ describe('AiSearchPanel', () => {
   });
 
   it('shows loading indicator when the last message is loading with no answer yet', () => {
-    mockMessages = [makeMessage({ answer: '', isLoading: true, questionId: '' })];
-    mockIsAnyLoading = true;
+    mockMessages = [makeMessage({ answer: '', phase: 'answering', questionId: '' })];
+    mockIsAwaitingAnswer = true;
     render(<AiSearchPanel onClose={onClose} />);
 
     expect(screen.getByText('Thinking...')).toBeInTheDocument();
   });
 
   it('shows stop button while loading', () => {
-    mockMessages = [makeMessage({ answer: 'partial', isLoading: true })];
-    mockIsAnyLoading = true;
+    mockMessages = [makeMessage({ answer: 'partial', phase: 'answering' })];
+    mockIsAwaitingAnswer = true;
     render(<AiSearchPanel onClose={onClose} />);
 
     expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
   });
 
   it('calls stopCurrent when the stop button is clicked', async () => {
-    mockMessages = [makeMessage({ answer: 'partial', isLoading: true })];
-    mockIsAnyLoading = true;
+    mockMessages = [makeMessage({ answer: 'partial', phase: 'answering' })];
+    mockIsAwaitingAnswer = true;
     const user = userEvent.setup();
     render(<AiSearchPanel onClose={onClose} />);
 
@@ -321,8 +323,8 @@ describe('AiSearchPanel', () => {
     });
 
     it('does not auto-submit speech result when a request is in flight', () => {
-      mockIsAnyLoading = true;
-      mockMessages = [makeMessage({ isLoading: true })];
+      mockIsAwaitingAnswer = true;
+      mockMessages = [makeMessage({ phase: 'answering' })];
       render(<AiSearchPanel onClose={onClose} />);
 
       act(() => {
@@ -333,8 +335,8 @@ describe('AiSearchPanel', () => {
     });
 
     it('hides mic button while loading', () => {
-      mockIsAnyLoading = true;
-      mockMessages = [makeMessage({ isLoading: true })];
+      mockIsAwaitingAnswer = true;
+      mockMessages = [makeMessage({ phase: 'answering' })];
       render(<AiSearchPanel onClose={onClose} />);
 
       expect(screen.queryByRole('button', { name: /voice input/i })).not.toBeInTheDocument();
@@ -350,8 +352,8 @@ describe('AiSearchPanel', () => {
     });
 
     it('does not show feedback widget while loading', () => {
-      mockMessages = [makeMessage({ answer: 'partial', questionId: 'q-123', isLoading: true })];
-      mockIsAnyLoading = true;
+      mockMessages = [makeMessage({ answer: 'partial', questionId: 'q-123', phase: 'answering' })];
+      mockIsAwaitingAnswer = true;
       render(<AiSearchPanel onClose={onClose} />);
 
       expect(screen.queryByText('Was this helpful?')).not.toBeInTheDocument();
