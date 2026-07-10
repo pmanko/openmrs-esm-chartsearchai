@@ -400,6 +400,7 @@ export interface HubProfileMetadata {
   temporal_enforcement: 'off' | 'warn' | 'enforce' | string;
   available: boolean;
   default: boolean;
+  selection_priority: number;
   topology: 'single' | 'team' | string;
   visibility: 'product' | 'internal' | 'experimental' | string;
   stages: string[];

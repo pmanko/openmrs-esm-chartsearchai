@@ -19,6 +19,7 @@ const profile = (overrides: Partial<HubProfileMetadata>): HubProfileMetadata => 
   temporal_enforcement: 'enforce',
   available: true,
   default: false,
+  selection_priority: 10,
   topology: 'single',
   visibility: 'product',
   stages: ['context', 'answer', 'gate', 'review', 'indepth'],
@@ -119,6 +120,21 @@ describe('ModelPicker', () => {
     render(<ModelPicker />);
 
     await waitFor(() => expect(chatSessionStore.getState().selectedProfileId).toBe('single-e4b-checked'));
+  });
+
+  it('does not invent a fallback when the hub advertises no available default', async () => {
+    mockFetch.mockResolvedValueOnce({
+      object: 'list',
+      data: [
+        profile({ available: false, default: false }),
+        profile({ id: 'single-12b-checked', label: 'Checked answer (12B)', default: false }),
+      ],
+    });
+    render(<ModelPicker />);
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(chatSessionStore.getState().selectedProfileId).toBeNull();
+    expect(await screen.findByRole('button', { name: /No profile available/i })).toBeInTheDocument();
   });
 
   it('portals the Carbon menu outside the picker subtree', async () => {

@@ -115,7 +115,7 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         pending.safetyWarnings = m.safetyWarnings;
         pending.confidence = m.confidence;
         pending.answerValidation = m.answerValidation;
-        pending.inDepth = m.inDepth;
+        pending.inDepth = interruptInDepth(m.inDepth);
         pending.references = m.references ?? [];
         pending.questionId = m.messageId;
         out.push(pending);
@@ -134,6 +134,11 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
 
 function stripInDepthHeader(text: string): string {
   return text.replace(/^\s*\*\*In ?Depth\*\*\s*/i, '').trimStart();
+}
+
+function interruptInDepth(inDepth?: AiInDepth): AiInDepth | undefined {
+  if (!inDepth || inDepth.status !== 'pending') return inDepth;
+  return { ...inDepth, status: 'failed', error: 'In-Depth was interrupted.' };
 }
 
 export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
@@ -205,7 +210,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           return prev.filter((_, i) => i !== idx);
         }
         const updated = [...prev];
-        updated[idx] = { ...msg, phase: 'complete' };
+        updated[idx] = { ...msg, phase: 'complete', inDepth: interruptInDepth(msg.inDepth) };
         return updated;
       });
     }
@@ -252,11 +257,11 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             const msg = prev[idx];
             if (isTerminal(msg.phase)) return prev;
             const updated = [...prev];
-            // Keep whatever in-depth arrived so far, marked complete (no perpetual spinner).
+            // Keep any received content, but report that the phase was interrupted.
             updated[idx] = {
               ...msg,
               phase: 'complete',
-              inDepth: msg.inDepth ? { ...msg.inDepth, status: 'complete' } : msg.inDepth,
+              inDepth: interruptInDepth(msg.inDepth),
             };
             return updated;
           });

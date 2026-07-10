@@ -47,7 +47,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   );
   const availableProfiles = useMemo(() => productProfiles.filter((profile) => profile.available), [productProfiles]);
   const defaultProfile = useMemo(
-    () => availableProfiles.find((profile) => profile.default) ?? availableProfiles[0] ?? null,
+    () => availableProfiles.find((profile) => profile.default) ?? null,
     [availableProfiles],
   );
   const effectiveProfile = useMemo(

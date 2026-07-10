@@ -45,6 +45,31 @@ describe('useChartSearchAi', () => {
     expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-1');
   });
 
+  it('hydrates a stale pending In-Depth as failed instead of showing a permanent spinner', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-1',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'First Q', createdAt: 1 },
+        {
+          messageId: 'a-1',
+          role: 'assistant',
+          content: 'First A',
+          inDepth: { status: 'pending', answer: '' },
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].inDepth).toEqual({
+      status: 'failed',
+      answer: '',
+      error: 'In-Depth was interrupted.',
+    });
+  });
+
   it('appends a loading message on submitQuestion and calls chatPatientChartStream with null session before hydration', async () => {
     // Force hydration to never resolve so the session uuid stays null
     // when submitQuestion fires — this exercises the "first turn ever"
@@ -593,11 +618,15 @@ describe('useChartSearchAi', () => {
     expect(firstController.signal.aborted).toBe(true);
     expect(result.current.messages).toHaveLength(2);
 
-    // Q1 is finalized, keeping the partial in-depth (marked complete, no perpetual spinner).
+    // Q1 is finalized with an honest interrupted state (no perpetual spinner).
     const q1 = result.current.messages[0];
     expect(q1.phase).toBe('complete');
     expect(q1.answer).toBe('A1 checked');
-    expect(q1.inDepth).toEqual({ status: 'complete', answer: 'Partial in-depth.' });
+    expect(q1.inDepth).toEqual({
+      status: 'failed',
+      answer: 'Partial in-depth.',
+      error: 'In-Depth was interrupted.',
+    });
 
     // Q2 is the new in-flight turn.
     const q2 = result.current.messages[1];
