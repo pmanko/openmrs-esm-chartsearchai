@@ -717,6 +717,47 @@ describe('AiResponsePanel staged in-depth status', () => {
   });
 });
 
+describe('AiResponsePanel answer-validation lifecycle', () => {
+  const baseProps = {
+    answer: 'The checked answer.',
+    references: [],
+    questionId: 'q-validation',
+    error: null,
+    phase: 'settled' as const,
+    patientUuid,
+  };
+
+  it.each([
+    ['validating', 'Checking answer'],
+    ['checked', 'Checked'],
+    ['edited', 'Updated after check'],
+    ['needs_review', 'Needs review'],
+    ['unavailable', 'Check unavailable'],
+  ] as const)('renders the %s lifecycle label', (status, label) => {
+    render(<AiResponsePanel {...baseProps} answerValidation={{ status, label }} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it('discloses the original answer after a validation edit', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        answer="The corrected answer."
+        answerValidation={{
+          status: 'edited',
+          label: 'Updated after check',
+          originalAnswer: 'The original answer.',
+        }}
+      />,
+    );
+
+    const disclosure = screen.getByText('view original').closest('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure).toHaveTextContent('The original answer.');
+    expect(disclosure).not.toHaveAttribute('open');
+  });
+});
+
 describe('AiResponsePanel per-section confidence', () => {
   const baseProps = {
     answer: '**Answer**\nHgb is 14.0 [1].\n\n**In Depth**\n- within range [1]',
