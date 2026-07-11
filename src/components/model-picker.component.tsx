@@ -98,7 +98,13 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   return (
     <div className={styles.root}>
       <div className={styles.triggerRow}>
-        <MenuButton label={triggerLabel} kind="ghost" size="sm" menuAlignment="top-end">
+        <MenuButton
+          data-testid="chartsearchai-profile-picker"
+          label={triggerLabel}
+          kind="ghost"
+          size="sm"
+          menuAlignment="top-end"
+        >
           {sections.map((section, index) => (
             <React.Fragment key={section.key}>
               {index > 0 ? <MenuItemDivider /> : null}

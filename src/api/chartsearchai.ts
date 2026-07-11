@@ -33,6 +33,10 @@ export interface AiReference {
    * the source record but final support verification is still running.
    */
   groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked';
+  /** Whether support was evaluated from this record alone or a cited source set. */
+  groundingScope?: 'record' | 'source_set';
+  /** Citation indices evaluated together when groundingScope is source_set. */
+  groundingGroup?: number[];
 }
 
 /**

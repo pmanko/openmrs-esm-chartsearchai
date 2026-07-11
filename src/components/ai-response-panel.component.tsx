@@ -66,10 +66,13 @@ function groundedTag(ref: AiReference, t: Translate): GroundedTag | null {
     };
   }
   if (ref.grounded === true || ref.groundingStatus === 'verified') {
+    const sourceSet = ref.groundingScope === 'source_set';
     return {
       type: 'green',
       text: t('grounded', 'Verified'),
-      title: t('groundedTitle', 'Supported by the cited record.'),
+      title: sourceSet
+        ? t('groundedSourceSetTitle', 'Supports this claim together with the other cited records.')
+        : t('groundedTitle', 'Supported by the cited record.'),
     };
   }
   if (ref.grounded === false || ref.groundingStatus === 'unsupported') {

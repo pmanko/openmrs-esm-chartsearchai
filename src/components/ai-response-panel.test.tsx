@@ -341,6 +341,7 @@ describe('AiResponsePanel citation grounding', () => {
   function renderWithGrounded(
     grounded: boolean | null,
     groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked',
+    groundingScope?: 'record' | 'source_set',
   ) {
     render(
       <AiResponsePanel
@@ -353,6 +354,7 @@ describe('AiResponsePanel citation grounding', () => {
             date: '2025-01-15',
             grounded,
             groundingStatus,
+            groundingScope,
           },
         ]}
         questionId="q"
@@ -376,6 +378,11 @@ describe('AiResponsePanel citation grounding', () => {
     expect(screen.getByText('Verified')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '1' })).toBeInTheDocument();
     expect(screen.queryByText('Unsupported')).not.toBeInTheDocument();
+  });
+
+  it('labels a collective verdict as source-set support rather than individual-record support', () => {
+    renderWithGrounded(true, 'verified', 'source_set');
+    expect(screen.getByTitle('Supports this claim together with the other cited records.')).toBeInTheDocument();
   });
 
   it('shows no grounding badge when the verdict is null (unverified)', () => {

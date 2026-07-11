@@ -17,6 +17,7 @@
   "feedbackThanks": "Thanks for your feedback",
   "grounded": "Verified",
   "groundedTitle": "Supported by the cited record.",
+  "groundedSourceSetTitle": "Supports this claim together with the other cited records.",
   "groundingChecking": "Checking",
   "groundingCheckingTitle": "Source resolved; support check is still running.",
   "helpful": "Helpful",
