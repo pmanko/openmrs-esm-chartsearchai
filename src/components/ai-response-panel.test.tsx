@@ -30,7 +30,7 @@ describe('AiResponsePanel reference links', () => {
   const answer =
     'The patient has lab results [1] and an active order [2]. They have an allergy [3], a condition [4], and a diagnosis [5].';
 
-  it('renders reference tags as clickable <a> elements with correct href', () => {
+  it('keeps raw reference tags in a collapsed detail while inline links stay available', () => {
     render(
       <AiResponsePanel
         answer={answer}
@@ -42,9 +42,11 @@ describe('AiResponsePanel reference links', () => {
       />,
     );
 
-    const refLinks = screen.getAllByRole('link');
-    // 5 inline citations + 5 reference tags = 10 links
-    expect(refLinks.length).toBe(10);
+    const details = screen.getByText('Citation details').closest('details');
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Citation details'));
+    expect(details).toHaveAttribute('open');
+    expect(screen.getAllByRole('link')).toHaveLength(10);
 
     // Check reference tag links (the ones with label text like "[1] obs — 2025-01-15")
     const obsLink = screen.getByText('[1] obs — 2025-01-15');
@@ -79,6 +81,9 @@ describe('AiResponsePanel reference links', () => {
             resourceUuid: 'enc-4',
             date: '2026-01-26',
             sourceText: 'Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower',
+            resolutionStatus: 'resolved',
+            groundingStatus: 'verified',
+            usage: [{ location: 'answer', text: 'The last visit was documented.' }],
           },
         ]}
         questionId="test-question-id"
@@ -94,6 +99,9 @@ describe('AiResponsePanel reference links', () => {
       screen.getAllByText('Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower').length,
     ).toBeGreaterThan(0);
     expect(screen.getByText(/UUID: enc-4/)).toBeInTheDocument();
+    expect(screen.getByText('Source found')).toBeInTheDocument();
+    expect(screen.getAllByText('Verified')).toHaveLength(2);
+    expect(screen.getByText('Used in: answer')).toBeInTheDocument();
   });
 
   it('passes the resource UUID (not a numeric id) to highlightReference when a citation is clicked', () => {
@@ -108,6 +116,7 @@ describe('AiResponsePanel reference links', () => {
       />,
     );
 
+    fireEvent.click(screen.getByText('Citation details'));
     fireEvent.click(screen.getByText('[1] obs — 2025-01-15'));
 
     // The cited record's UUID must reach highlightReference so it can locate the chart row.

@@ -141,6 +141,24 @@ function interruptInDepth(inDepth?: AiInDepth): AiInDepth | undefined {
   return { ...inDepth, status: 'failed', error: 'In-Depth was interrupted.' };
 }
 
+type TurnEnvelope = Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth };
+
+function applyTurnEnvelope(message: ChatMessage, payload: TurnEnvelope, phase: TurnPhase): ChatMessage {
+  return {
+    ...message,
+    answer: payload.answer ?? message.answer,
+    references: payload.references ?? message.references,
+    safetyWarnings: payload.safetyWarnings ?? message.safetyWarnings,
+    blocks: payload.blocks ?? message.blocks,
+    confidence: payload.confidence ?? message.confidence,
+    answerValidation: payload.answerValidation ?? message.answerValidation,
+    inDepth: payload.inDepth ?? message.inDepth,
+    questionId: payload.messageId ?? payload.questionId ?? message.questionId,
+    resolvedModel: payload.resolvedModel ?? message.resolvedModel,
+    phase,
+  };
+}
+
 export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
   const { messagesByPatient, sessionUuidByPatient } = useStore(chatSessionStore);
   const messages: ChatMessage[] = patientUuid ? (messagesByPatient[patientUuid] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES;
@@ -297,19 +315,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = {
-            ...updated[idx],
-            answer: response.answer,
-            references: response.references,
-            safetyWarnings: response.safetyWarnings ?? [],
-            blocks: response.blocks,
-            confidence: response.confidence,
-            answerValidation: response.answerValidation,
-            inDepth: response.inDepth,
-            questionId: response.messageId ?? response.questionId ?? '',
-            resolvedModel: response.resolvedModel,
-            phase: 'complete',
-          };
+          updated[idx] = applyTurnEnvelope(updated[idx], response, 'complete');
           return updated;
         });
         // Belt-and-braces: the X-ChartSearchAi-Session header captures the
@@ -344,23 +350,12 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = {
-            ...updated[idx],
-            answer: response.answer,
-            references: response.references,
-            safetyWarnings: response.safetyWarnings ?? [],
-            blocks: response.blocks,
-            confidence: response.confidence,
-            answerValidation: response.answerValidation,
-            inDepth: response.inDepth ?? { status: 'pending', answer: '' },
-            questionId: response.messageId ?? response.questionId ?? '',
-            resolvedModel: response.resolvedModel,
-            // Only enter the `validating` phase when a validation check is actually coming (the hub
-            // marks the answer_done with answerValidation.status === 'validating'). With no validator
-            // configured, no answer_validation event follows — settle immediately so the composer
-            // unlocks and there is no phantom "checking answer" state.
-            phase: response.answerValidation?.status === 'validating' ? 'validating' : 'settled',
-          };
+          const phase = response.answerValidation?.status === 'validating' ? 'validating' : 'settled';
+          updated[idx] = applyTurnEnvelope(
+            updated[idx],
+            { ...response, inDepth: response.inDepth ?? { status: 'pending', answer: '' } },
+            phase,
+          );
           return updated;
         });
         if (response.session) {
@@ -376,18 +371,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = {
-            ...updated[idx],
-            answer: response.answer,
-            references: response.references,
-            safetyWarnings: response.safetyWarnings ?? [],
-            blocks: response.blocks,
-            confidence: response.confidence,
-            answerValidation: response.answerValidation,
-            phase: 'settled',
-            questionId: response.messageId ?? response.questionId ?? updated[idx].questionId,
-            resolvedModel: response.resolvedModel ?? updated[idx].resolvedModel,
-          };
+          updated[idx] = applyTurnEnvelope(updated[idx], response, 'settled');
           return updated;
         });
       };
@@ -398,51 +382,51 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = {
-            ...updated[idx],
-            answer: payload.answer ?? updated[idx].answer,
-            references: payload.references ?? updated[idx].references,
-            safetyWarnings: payload.safetyWarnings ?? updated[idx].safetyWarnings,
-            blocks: payload.blocks ?? updated[idx].blocks,
-            confidence: payload.confidence ?? updated[idx].confidence,
-            answerValidation: payload.answerValidation ?? updated[idx].answerValidation,
-            questionId: payload.messageId ?? updated[idx].questionId,
-            // in-depth is now generating in the background (delivered whole on indepth_done — the hub
-            // does not token-stream). The composer is already unlocked; a new question preempts it.
-            phase: 'in-depth',
-            inDepth: payload.inDepth ?? { status: 'pending', answer: updated[idx].inDepth?.answer ?? '' },
-          };
+          updated[idx] = applyTurnEnvelope(
+            updated[idx],
+            {
+              ...payload,
+              inDepth: payload.inDepth ?? { status: 'pending', answer: updated[idx].inDepth?.answer ?? '' },
+            },
+            'in-depth',
+          );
           return updated;
         });
       };
 
-      const inDepthDone = (inDepth: AiInDepth) => {
+      const inDepthDone = (payload: TurnEnvelope) => {
         if (!isMountedRef.current) return;
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = {
-            ...updated[idx],
-            phase: 'complete',
-            inDepth: { ...inDepth, answer: stripInDepthHeader(inDepth.answer ?? '') },
-          };
+          const inDepth = payload.inDepth;
+          updated[idx] = applyTurnEnvelope(
+            updated[idx],
+            inDepth
+              ? { ...payload, inDepth: { ...inDepth, answer: stripInDepthHeader(inDepth.answer ?? '') } }
+              : payload,
+            'complete',
+          );
           return updated;
         });
       };
 
-      const inDepthError = (inDepth: AiInDepth) => {
+      const inDepthError = (payload: TurnEnvelope) => {
         if (!isMountedRef.current) return;
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
           // The direct answer is still available; only the background in-depth failed → terminal.
-          updated[idx] = {
-            ...updated[idx],
-            phase: 'complete',
-            inDepth: inDepth.status === 'failed' ? inDepth : { ...inDepth, status: 'failed' },
-          };
+          const inDepth = payload.inDepth;
+          updated[idx] = applyTurnEnvelope(
+            updated[idx],
+            inDepth
+              ? { ...payload, inDepth: inDepth.status === 'failed' ? inDepth : { ...inDepth, status: 'failed' } }
+              : payload,
+            'complete',
+          );
           return updated;
         });
       };

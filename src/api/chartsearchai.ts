@@ -12,6 +12,8 @@ export const SESSION_EXPIRED_ERROR_CODE = 'chartsearchai:session-expired';
 
 export interface AiReference {
   index: number;
+  /** Stable evidence-ledger id supplied by med-agent-hub. */
+  sourceId?: string;
   resourceType: string;
   /**
    * OpenMRS UUID of the cited record (the backend serializes this field as `resourceUuid`).
@@ -21,6 +23,10 @@ export interface AiReference {
   date: string;
   /** Resolved source record text, when supplied by the hub staged path. */
   sourceText?: string;
+  /** Whether the citation index resolved to a record in this turn's evidence ledger. */
+  resolutionStatus?: 'resolved' | 'unresolved';
+  /** Answer, In-Depth, or table locations that used this source. */
+  usage?: Array<{ location: string; text: string; path?: string }>;
   /**
    * Citation grounding verdict from the backend: true = the cited record
    * supports the claim, false = it does not, null/absent = unverified
@@ -196,8 +202,8 @@ export function chatPatientChartStream(
     onAnswerDone?: (response: AiSearchResponse) => void;
     onAnswerValidation?: (response: AiSearchResponse) => void;
     onInDepthPending?: (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => void;
-    onInDepthDone?: (inDepth: AiInDepth) => void;
-    onInDepthError?: (inDepth: AiInDepth) => void;
+    onInDepthDone?: (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => void;
+    onInDepthError?: (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => void;
     onDone: (response: AiSearchResponse) => void;
     onError: (error: string) => void;
   },
@@ -300,13 +306,15 @@ export function chatPatientChartStream(
           }
         } else if (eventType === 'indepth_done') {
           try {
-            callbacks.onInDepthDone?.(JSON.parse(data) as AiInDepth);
+            const raw = JSON.parse(data) as Partial<AiSearchResponse> & AiInDepth;
+            callbacks.onInDepthDone?.(raw.inDepth ? raw : { inDepth: raw });
           } catch {
             callbacks.onError('Failed to parse in-depth response');
           }
         } else if (eventType === 'indepth_error') {
           try {
-            callbacks.onInDepthError?.(JSON.parse(data) as AiInDepth);
+            const raw = JSON.parse(data) as Partial<AiSearchResponse> & AiInDepth;
+            callbacks.onInDepthError?.(raw.inDepth ? raw : { inDepth: raw });
           } catch {
             callbacks.onError('Failed to parse in-depth error response');
           }

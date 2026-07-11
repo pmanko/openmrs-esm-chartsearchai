@@ -309,6 +309,12 @@
   overflow-wrap: anywhere;
 }
 
+.evidenceBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: layout.$spacing-02;
+}
+
 .evidenceLink,
 .evidenceTitleText {
   @include type.type-style('body-compact-01');

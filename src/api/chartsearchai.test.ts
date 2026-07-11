@@ -163,7 +163,9 @@ describe('chatPatientChartStream', () => {
       messageId: 'm1',
       inDepth: { status: 'pending', answer: '' },
     });
-    expect(cb.onInDepthDone).toHaveBeenCalledWith({ status: 'complete', answer: '- background' });
+    expect(cb.onInDepthDone).toHaveBeenCalledWith({
+      inDepth: { status: 'complete', answer: '- background' },
+    });
     expect(cb.onDone).toHaveBeenCalledWith(
       expect.objectContaining({
         inDepth: { status: 'complete', answer: '- background' },

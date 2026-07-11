@@ -524,8 +524,29 @@ describe('useChartSearchAi', () => {
     expect(phase()).toBe('in-depth');
     expect(result.current.messages[0].references?.[0].groundingStatus).toBe('verified');
 
-    act(() => cb.onInDepthDone({ status: 'complete', answer: 'In-depth detail.' }));
+    act(() =>
+      cb.onInDepthDone({
+        references: [
+          {
+            index: 1,
+            resourceType: 'Order',
+            resourceUuid: 'order-1',
+            date: '2026-07-10',
+            sourceText: 'Aspirin order',
+            groundingStatus: 'verified',
+            groundingScope: 'record',
+            usage: [{ location: 'answer', text: 'Aspirin [1].' }],
+          },
+        ],
+        inDepth: { status: 'complete', answer: 'In-depth detail.' },
+      }),
+    );
     expect(phase()).toBe('complete');
+    expect(result.current.messages[0].references?.[0]).toMatchObject({
+      sourceText: 'Aspirin order',
+      groundingScope: 'record',
+      usage: [{ location: 'answer', text: 'Aspirin [1].' }],
+    });
   });
 
   it('settles immediately at answer_done when no validation is pending (no validator configured)', async () => {

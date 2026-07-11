@@ -157,9 +157,33 @@ const EvidenceCard: React.FC<{ refItem: AiReference; patientUuid: string; t: Tra
   const title = evidenceTitle(refItem);
   const meta = [`[${refItem.index}]`, refItem.resourceType, refItem.date].filter(Boolean).join(' · ');
   const source = (refItem.sourceText ?? '').trim();
+  const grounding = isDrugReference(refItem) ? referenceTag(t) : groundedTag(refItem, t);
   return (
     <div className={styles.evidenceCard}>
       <div className={styles.evidenceMeta}>{meta}</div>
+      <div className={styles.evidenceBadges}>
+        {refItem.resolutionStatus === 'resolved' && (
+          <span title={t('sourceFoundTitle', 'Citation resolved to this source record.')}>
+            <Tag type="blue" size="sm">
+              {t('sourceFound', 'Source found')}
+            </Tag>
+          </span>
+        )}
+        {refItem.resolutionStatus === 'unresolved' && (
+          <span title={t('sourceMissingTitle', 'Citation did not resolve to a source record.')}>
+            <Tag type="red" size="sm">
+              {t('sourceMissing', 'Source missing')}
+            </Tag>
+          </span>
+        )}
+        {grounding && (
+          <span title={grounding.title}>
+            <Tag type={grounding.type} size="sm">
+              {grounding.text}
+            </Tag>
+          </span>
+        )}
+      </div>
       {url ? (
         <a className={styles.evidenceLink} href={url} onClick={(e) => handleReferenceNavigate(e, url, refItem)}>
           {title}
@@ -171,6 +195,11 @@ const EvidenceCard: React.FC<{ refItem: AiReference; patientUuid: string; t: Tra
       {refItem.resourceUuid && (
         <div className={styles.evidenceUuid}>
           {t('sourceUuid', 'UUID')}: {refItem.resourceUuid}
+        </div>
+      )}
+      {refItem.usage && refItem.usage.length > 0 && (
+        <div className={styles.evidenceUuid}>
+          {t('usedIn', 'Used in')}: {[...new Set(refItem.usage.map((item) => item.location))].join(', ')}
         </div>
       )}
     </div>
@@ -429,8 +458,8 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
       )}
 
       {references.length > 0 && (
-        <div className={styles.referencesSection}>
-          <span className={styles.referencesLabel}>{t('references', 'References')}:</span>
+        <details className={styles.referencesSection}>
+          <summary className={styles.referencesLabel}>{t('citationDetails', 'Citation details')}</summary>
           <div className={styles.referencesList}>
             {references.map((ref) => {
               const url = buildReferenceUrl(ref, patientUuid);
@@ -464,7 +493,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               );
             })}
           </div>
-        </div>
+        </details>
       )}
 
       {resolvedEvidence.length > 0 && (
