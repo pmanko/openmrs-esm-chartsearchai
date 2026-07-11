@@ -187,7 +187,7 @@ export function chatPatientChartStream(
     onSession: (uuid: string) => void;
     onAnswerDone?: (response: AiSearchResponse) => void;
     onAnswerValidation?: (response: AiSearchResponse) => void;
-    onInDepthPending?: (payload: { messageId?: string; inDepth?: AiInDepth }) => void;
+    onInDepthPending?: (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => void;
     onInDepthDone?: (inDepth: AiInDepth) => void;
     onInDepthError?: (inDepth: AiInDepth) => void;
     onDone: (response: AiSearchResponse) => void;
@@ -284,7 +284,9 @@ export function chatPatientChartStream(
           }
         } else if (eventType === 'indepth_pending') {
           try {
-            callbacks.onInDepthPending?.(JSON.parse(data) as { messageId?: string; inDepth?: AiInDepth });
+            callbacks.onInDepthPending?.(
+              JSON.parse(data) as Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth },
+            );
           } catch {
             callbacks.onError('Failed to parse in-depth pending response');
           }

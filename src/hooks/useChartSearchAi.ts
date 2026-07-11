@@ -392,7 +392,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         });
       };
 
-      const inDepthPending = (payload: { messageId?: string; inDepth?: AiInDepth }) => {
+      const inDepthPending = (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => {
         if (!isMountedRef.current) return;
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
@@ -400,6 +400,12 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const updated = [...prev];
           updated[idx] = {
             ...updated[idx],
+            answer: payload.answer ?? updated[idx].answer,
+            references: payload.references ?? updated[idx].references,
+            safetyWarnings: payload.safetyWarnings ?? updated[idx].safetyWarnings,
+            blocks: payload.blocks ?? updated[idx].blocks,
+            confidence: payload.confidence ?? updated[idx].confidence,
+            answerValidation: payload.answerValidation ?? updated[idx].answerValidation,
             questionId: payload.messageId ?? updated[idx].questionId,
             // in-depth is now generating in the background (delivered whole on indepth_done — the hub
             // does not token-stream). The composer is already unlocked; a new question preempts it.

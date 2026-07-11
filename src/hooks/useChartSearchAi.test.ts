@@ -506,8 +506,23 @@ describe('useChartSearchAi', () => {
 
     // indepth_pending (not a token) is what moves the turn into the 'in-depth' phase — the hub
     // delivers the in-depth answer whole on indepth_done, it does not token-stream it.
-    act(() => cb.onInDepthPending({ messageId: 'm-1', inDepth: { status: 'pending', answer: '' } }));
+    act(() =>
+      cb.onInDepthPending({
+        messageId: 'm-1',
+        references: [
+          {
+            index: 1,
+            resourceType: 'Order',
+            resourceUuid: 'order-1',
+            date: '2026-07-10',
+            groundingStatus: 'verified',
+          },
+        ],
+        inDepth: { status: 'pending', answer: '' },
+      }),
+    );
     expect(phase()).toBe('in-depth');
+    expect(result.current.messages[0].references?.[0].groundingStatus).toBe('verified');
 
     act(() => cb.onInDepthDone({ status: 'complete', answer: 'In-depth detail.' }));
     expect(phase()).toBe('complete');
