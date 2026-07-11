@@ -23,7 +23,7 @@ export interface ChatMessage {
   references: AiReference[];
   safetyWarnings?: AiSafetyWarning[];
   blocks?: AiBlock[];
-  questionId: string;
+  auditLogId?: number;
   /**
    * The turn's single lifecycle phase — the source of truth for composer behavior, section
    * rendering, and DOM signals. Mirrors the backend staged SSE events (see {@link TurnPhase}).
@@ -104,7 +104,7 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         question: m.content,
         answer: '',
         references: [],
-        questionId: '',
+        auditLogId: undefined,
         phase: 'complete',
         error: null,
       };
@@ -114,10 +114,10 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         pending.blocks = m.blocks;
         pending.safetyWarnings = m.safetyWarnings;
         pending.confidence = m.confidence;
-        pending.answerValidation = m.answerValidation;
+        pending.answerValidation = interruptAnswerValidation(m.answerValidation);
         pending.inDepth = interruptInDepth(m.inDepth);
         pending.references = m.references ?? [];
-        pending.questionId = m.messageId;
+        pending.auditLogId = m.auditLogId;
         out.push(pending);
         pending = null;
       }
@@ -141,6 +141,18 @@ function interruptInDepth(inDepth?: AiInDepth): AiInDepth | undefined {
   return { ...inDepth, status: 'failed', error: 'In-Depth was interrupted.' };
 }
 
+function interruptAnswerValidation(
+  validation?: AiSearchResponse['answerValidation'],
+): AiSearchResponse['answerValidation'] | undefined {
+  if (!validation || validation.status !== 'validating') return validation;
+  return {
+    ...validation,
+    status: 'unavailable',
+    label: 'Check unavailable',
+    summary: 'The answer check was interrupted before completion.',
+  };
+}
+
 type TurnEnvelope = Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth };
 
 function applyTurnEnvelope(message: ChatMessage, payload: TurnEnvelope, phase: TurnPhase): ChatMessage {
@@ -153,7 +165,7 @@ function applyTurnEnvelope(message: ChatMessage, payload: TurnEnvelope, phase: T
     confidence: payload.confidence ?? message.confidence,
     answerValidation: payload.answerValidation ?? message.answerValidation,
     inDepth: payload.inDepth ?? message.inDepth,
-    questionId: payload.messageId ?? payload.questionId ?? message.questionId,
+    auditLogId: payload.auditLogId ?? message.auditLogId,
     resolvedModel: payload.resolvedModel ?? message.resolvedModel,
     phase,
   };
@@ -228,7 +240,12 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           return prev.filter((_, i) => i !== idx);
         }
         const updated = [...prev];
-        updated[idx] = { ...msg, phase: 'complete', inDepth: interruptInDepth(msg.inDepth) };
+        updated[idx] = {
+          ...msg,
+          phase: 'complete',
+          answerValidation: interruptAnswerValidation(msg.answerValidation),
+          inDepth: interruptInDepth(msg.inDepth),
+        };
         return updated;
       });
     }
@@ -279,6 +296,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             updated[idx] = {
               ...msg,
               phase: 'complete',
+              answerValidation: interruptAnswerValidation(msg.answerValidation),
               inDepth: interruptInDepth(msg.inDepth),
             };
             return updated;
@@ -294,7 +312,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         question,
         answer: '',
         references: [],
-        questionId: '',
+        auditLogId: undefined,
         phase: 'answering',
         error: null,
       };
@@ -339,7 +357,12 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], error: errMessage, phase: 'error' };
+          updated[idx] = {
+            ...updated[idx],
+            answerValidation: interruptAnswerValidation(updated[idx].answerValidation),
+            error: errMessage,
+            phase: 'error',
+          };
           return updated;
         });
       };
@@ -423,7 +446,13 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           updated[idx] = applyTurnEnvelope(
             updated[idx],
             inDepth
-              ? { ...payload, inDepth: inDepth.status === 'failed' ? inDepth : { ...inDepth, status: 'failed' } }
+              ? {
+                  ...payload,
+                  inDepth:
+                    inDepth.status === 'failed' || inDepth.status === 'needs_review'
+                      ? inDepth
+                      : { ...inDepth, status: 'failed' },
+                }
               : payload,
             'complete',
           );

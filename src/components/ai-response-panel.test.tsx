@@ -35,7 +35,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer={answer}
         references={references}
-        questionId="test-question-id"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -77,16 +77,18 @@ describe('AiResponsePanel reference links', () => {
         references={[
           {
             index: 4,
+            sourceId: 'querystore:encounter:enc-4',
             resourceType: 'encounter',
             resourceUuid: 'enc-4',
             date: '2026-01-26',
+            title: 'Adult visit on 2026-01-26',
             sourceText: 'Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower',
             resolutionStatus: 'resolved',
             groundingStatus: 'verified',
             usage: [{ location: 'answer', text: 'The last visit was documented.' }],
           },
         ]}
-        questionId="test-question-id"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -95,13 +97,93 @@ describe('AiResponsePanel reference links', () => {
 
     expect(screen.getByText('Evidence Used')).toBeInTheDocument();
     expect(screen.getByText('[4] · encounter · 2026-01-26')).toBeInTheDocument();
+    expect(screen.getByText('Adult visit on 2026-01-26')).toBeInTheDocument();
     expect(
-      screen.getAllByText('Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower').length,
-    ).toBeGreaterThan(0);
+      screen.getByText('Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower'),
+    ).toBeInTheDocument();
     expect(screen.getByText(/UUID: enc-4/)).toBeInTheDocument();
     expect(screen.getByText('Source found')).toBeInTheDocument();
-    expect(screen.getAllByText('Verified')).toHaveLength(2);
+    expect(screen.getByText('Verified')).toBeInTheDocument();
     expect(screen.getByText('Used in: answer')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Citation details'));
+    expect(screen.getByText('[4] · querystore:encounter:enc-4 · resolved · verified')).toBeInTheDocument();
+  });
+
+  it('shows an unresolved citation as a missing-source evidence tile', () => {
+    render(
+      <AiResponsePanel
+        answer="Unsupported citation [99]."
+        references={[
+          {
+            index: 99,
+            sourceId: 'unresolved:99',
+            resourceType: 'unknown',
+            resourceUuid: '',
+            date: '',
+            resolutionStatus: 'unresolved',
+            groundingStatus: 'unchecked',
+            usage: [{ location: 'answer', text: 'Unsupported citation [99].' }],
+          },
+        ]}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Evidence Used')).toBeInTheDocument();
+    expect(screen.getByText('Source missing')).toBeInTheDocument();
+    expect(screen.getByText('unknown 99')).toBeInTheDocument();
+  });
+
+  it('shows title-only resolved evidence without duplicating source-derived titles', () => {
+    const { rerender } = render(
+      <AiResponsePanel
+        answer="A supported answer [7]."
+        references={[
+          {
+            index: 7,
+            title: 'Medication order',
+            sourceText: '',
+            resourceType: 'order',
+            resourceUuid: 'order-7',
+            date: '2026-07-10',
+            resolutionStatus: 'resolved',
+            groundingStatus: 'verified',
+          },
+        ]}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Medication order')).toBeInTheDocument();
+
+    rerender(
+      <AiResponsePanel
+        answer="A supported answer [7]."
+        references={[
+          {
+            index: 7,
+            sourceText: '(2026-07-10) Medication order',
+            resourceType: 'order',
+            resourceUuid: 'order-7',
+            date: '2026-07-10',
+            resolutionStatus: 'resolved',
+            groundingStatus: 'verified',
+          },
+        ]}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+    expect(screen.getAllByText('Medication order')).toHaveLength(1);
+    expect(screen.queryByText('(2026-07-10) Medication order')).not.toBeInTheDocument();
   });
 
   it('passes the resource UUID (not a numeric id) to highlightReference when a citation is clicked', () => {
@@ -109,7 +191,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer={answer}
         references={references}
-        questionId="test-question-id"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -130,7 +212,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer={answer}
         references={references}
-        questionId="test-question-id"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -165,7 +247,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer="The patient has findings [1, 2]."
         references={refs}
-        questionId="test-question-id"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -188,7 +270,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer="The same finding is cited twice [3, 3]."
         references={refs}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -212,7 +294,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer="Some answer [1]."
         references={unknownRef}
-        questionId="test-question-id"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -229,7 +311,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer=""
         references={[]}
-        questionId="test-question-id"
+        auditLogId={42}
         error="Server error: 500"
         phase="complete"
         patientUuid={patientUuid}
@@ -265,7 +347,7 @@ describe('AiResponsePanel reference links', () => {
         answer="See table for medications."
         references={refs}
         blocks={blocks}
-        questionId="q-blocks"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -298,7 +380,7 @@ describe('AiResponsePanel reference links', () => {
         answer="Still typing"
         references={[]}
         blocks={blocks}
-        questionId=""
+        auditLogId={42}
         error={null}
         phase="answering"
         patientUuid={patientUuid}
@@ -314,7 +396,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer=""
         references={[]}
-        questionId="test-question-id"
+        auditLogId={42}
         error={SESSION_EXPIRED_ERROR_CODE}
         phase="complete"
         patientUuid={patientUuid}
@@ -331,7 +413,7 @@ describe('AiResponsePanel reference links', () => {
       <AiResponsePanel
         answer="The patient has been taking"
         references={[]}
-        questionId="test-question-id"
+        auditLogId={42}
         error="Connection lost"
         phase="complete"
         patientUuid={patientUuid}
@@ -366,7 +448,7 @@ describe('AiResponsePanel citation grounding', () => {
             groundingScope,
           },
         ]}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -433,7 +515,7 @@ describe('AiResponsePanel drug-reference citations', () => {
       <AiResponsePanel
         answer="Reference dosing for ibuprofen [6]."
         references={references}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -458,7 +540,7 @@ describe('AiResponsePanel drug-reference citations', () => {
       <AiResponsePanel
         answer="Per the reference and the patient's labs [3, 5]."
         references={refs}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -485,7 +567,7 @@ describe('AiResponsePanel safety warnings', () => {
           { type: 'overdose', drug: 'Ibuprofen', detail: 'stated dose ~2400 mg/day exceeds the 1200 mg/day maximum' },
           { type: 'interaction', drug: 'Ibuprofen', detail: 'interacts with active order warfarin' },
         ]}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -510,7 +592,7 @@ describe('AiResponsePanel safety warnings', () => {
         safetyWarnings={[
           { type: 'contraindication', drug: 'Ibuprofen', detail: 'the patient has a recorded allergy to Ibuprofen' },
         ]}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -528,7 +610,7 @@ describe('AiResponsePanel safety warnings', () => {
         answer="The blood pressure is 120/80 [1]."
         references={[]}
         safetyWarnings={[]}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -544,7 +626,7 @@ describe('AiResponsePanel safety warnings', () => {
         answer="Some answer."
         references={[]}
         safetyWarnings={[{ type: 'future-unknown-type', drug: 'Ibuprofen', detail: 'a new advisory kind' }]}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -563,7 +645,7 @@ describe('AiResponsePanel safety warnings', () => {
         answer="Ibuprofen 600 mg [1]."
         references={[]}
         safetyWarnings={[{ type: 'overdose', drug: 'Ibuprofen', detail: 'exceeds the maximum' }]}
-        questionId="q"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -598,7 +680,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
       <AiResponsePanel
         answer="The patient has lab results [1]"
         references={references}
-        questionId="q1"
+        auditLogId={42}
         error={null}
         phase="answering"
         patientUuid={patientUuid}
@@ -613,7 +695,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
       <AiResponsePanel
         answer="The patient has lab results [1] and an active order [2]."
         references={references}
-        questionId="q1"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -628,7 +710,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
       <AiResponsePanel
         answer="The patient has lab results [1] and an active order [2]."
         references={references}
-        questionId="q1"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -646,7 +728,7 @@ describe('AiResponsePanel copy-to-clipboard', () => {
       <AiResponsePanel
         answer="Findings [1, 2] are notable."
         references={references}
-        questionId="q1"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -665,7 +747,7 @@ describe('AiResponsePanel model tag', () => {
       <AiResponsePanel
         answer="Done."
         references={[]}
-        questionId="q1"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -681,7 +763,7 @@ describe('AiResponsePanel model tag', () => {
       <AiResponsePanel
         answer="Partial"
         references={[]}
-        questionId="q1"
+        auditLogId={42}
         error={null}
         phase="answering"
         patientUuid={patientUuid}
@@ -697,7 +779,7 @@ describe('AiResponsePanel model tag', () => {
       <AiResponsePanel
         answer="Done."
         references={[]}
-        questionId="q1"
+        auditLogId={42}
         error={null}
         phase="complete"
         patientUuid={patientUuid}
@@ -715,7 +797,7 @@ describe('AiResponsePanel staged in-depth status', () => {
   const stagedBase = {
     answer: 'The patient is on metformin [1].',
     references: [{ index: 1, resourceType: 'order', resourceUuid: 'u-1', date: '2025-01-01' }],
-    questionId: 'q1',
+    auditLogId: 42,
     error: null,
     patientUuid,
     answerValidation: { status: 'checked' as const, label: 'Checked' },
@@ -739,6 +821,20 @@ describe('AiResponsePanel staged in-depth status', () => {
     expect(container.querySelector('[data-indepth-status="pending"]')).not.toBeInTheDocument();
   });
 
+  it('keeps a withheld in-depth visible as needs review', () => {
+    const { container } = render(
+      <AiResponsePanel
+        {...stagedBase}
+        phase="complete"
+        inDepth={{ status: 'needs_review', answer: '', error: 'All claims were withheld.' }}
+      />,
+    );
+
+    expect(container.querySelector('[data-indepth-status="needs_review"]')).toBeInTheDocument();
+    expect(screen.getByText('Needs review')).toBeInTheDocument();
+    expect(screen.getByText('All claims were withheld.')).toBeInTheDocument();
+  });
+
   it('exposes phase="settled" (composer already unlocked) after validation, before in-depth begins', () => {
     const { container } = render(
       <AiResponsePanel {...stagedBase} phase="settled" inDepth={{ status: 'pending', answer: '' }} />,
@@ -752,7 +848,7 @@ describe('AiResponsePanel answer-validation lifecycle', () => {
   const baseProps = {
     answer: 'The checked answer.',
     references: [],
-    questionId: 'q-validation',
+    auditLogId: 42,
     error: null,
     phase: 'settled' as const,
     patientUuid,
@@ -793,7 +889,7 @@ describe('AiResponsePanel per-section confidence', () => {
   const baseProps = {
     answer: '**Answer**\nHgb is 14.0 [1].\n\n**In Depth**\n- within range [1]',
     references: [{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-101', date: '2025-11-24' }],
-    questionId: 'q1',
+    auditLogId: 42,
     error: null,
     phase: 'complete' as const,
     patientUuid,

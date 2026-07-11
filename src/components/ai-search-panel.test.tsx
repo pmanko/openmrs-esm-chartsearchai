@@ -64,7 +64,7 @@ function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     answer: 'The patient is on metformin.',
     references: [],
     safetyWarnings: [],
-    questionId: 'q-1',
+    auditLogId: 42,
     phase: 'complete',
     error: null,
     ...overrides,
@@ -181,7 +181,7 @@ describe('AiSearchPanel', () => {
   });
 
   it('shows loading indicator when the last message is loading with no answer yet', () => {
-    mockMessages = [makeMessage({ answer: '', phase: 'answering', questionId: '' })];
+    mockMessages = [makeMessage({ answer: '', phase: 'answering', auditLogId: undefined })];
     mockIsAwaitingAnswer = true;
     render(<AiSearchPanel onClose={onClose} />);
 
@@ -345,14 +345,14 @@ describe('AiSearchPanel', () => {
 
   describe('feedback', () => {
     it('shows feedback widget when answer is complete', () => {
-      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', questionId: 'q-123' })];
+      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', auditLogId: 42 })];
       render(<AiSearchPanel onClose={onClose} />);
 
       expect(screen.getByText('Was this helpful?')).toBeInTheDocument();
     });
 
     it('does not show feedback widget while loading', () => {
-      mockMessages = [makeMessage({ answer: 'partial', questionId: 'q-123', phase: 'answering' })];
+      mockMessages = [makeMessage({ answer: 'partial', auditLogId: 42, phase: 'answering' })];
       mockIsAwaitingAnswer = true;
       render(<AiSearchPanel onClose={onClose} />);
 
@@ -360,7 +360,7 @@ describe('AiSearchPanel', () => {
     });
 
     it('shows thumbs up and thumbs down buttons', () => {
-      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', questionId: 'q-123' })];
+      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', auditLogId: 42 })];
       render(<AiSearchPanel onClose={onClose} />);
 
       expect(screen.getByRole('button', { name: 'Helpful' })).toBeInTheDocument();
@@ -369,8 +369,8 @@ describe('AiSearchPanel', () => {
 
     it('shows feedback widget for each completed message', () => {
       mockMessages = [
-        makeMessage({ id: 'a', question: 'Q1?', answer: 'A1.', questionId: 'q-1' }),
-        makeMessage({ id: 'b', question: 'Q2?', answer: 'A2.', questionId: 'q-2' }),
+        makeMessage({ id: 'a', question: 'Q1?', answer: 'A1.', auditLogId: 42 }),
+        makeMessage({ id: 'b', question: 'Q2?', answer: 'A2.', auditLogId: 42 }),
       ];
       render(<AiSearchPanel onClose={onClose} />);
 
@@ -378,7 +378,7 @@ describe('AiSearchPanel', () => {
     });
 
     it('shows thanks message after positive feedback', async () => {
-      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', questionId: 'q-123' })];
+      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', auditLogId: 42 })];
       const user = userEvent.setup();
       render(<AiSearchPanel onClose={onClose} />);
 
@@ -387,7 +387,7 @@ describe('AiSearchPanel', () => {
     });
 
     it('shows comment form after negative feedback', async () => {
-      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', questionId: 'q-123' })];
+      mockMessages = [makeMessage({ answer: 'The patient has diabetes.', auditLogId: 42 })];
       const user = userEvent.setup();
       render(<AiSearchPanel onClose={onClose} />);
 

@@ -70,6 +70,31 @@ describe('useChartSearchAi', () => {
     });
   });
 
+  it('hydrates a stale validating answer as check unavailable', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-1',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'First Q', createdAt: 1 },
+        {
+          messageId: 'a-1',
+          role: 'assistant',
+          content: 'First A',
+          answerValidation: { status: 'validating', label: 'Checking answer' },
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].answerValidation).toEqual({
+      status: 'unavailable',
+      label: 'Check unavailable',
+      summary: 'The answer check was interrupted before completion.',
+    });
+  });
+
   it('appends a loading message on submitQuestion and calls chatPatientChartStream with null session before hydration', async () => {
     // Force hydration to never resolve so the session uuid stays null
     // when submitQuestion fires — this exercises the "first turn ever"
@@ -152,7 +177,7 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages[0].phase).toBe('settled');
   });
 
-  it('finalizes last message on streaming done with messageId as questionId', async () => {
+  it('finalizes last message on streaming done with auditLogId separately from messageId', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
     await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
@@ -166,6 +191,7 @@ describe('useChartSearchAi', () => {
       references: [{ index: 1, resourceType: 'Obs', resourceUuid: 'uuid-10', date: '2025-06-01' }],
       session: 'srv-session-1',
       messageId: 'msg-final',
+      auditLogId: 42,
     };
 
     act(() => {
@@ -174,7 +200,7 @@ describe('useChartSearchAi', () => {
 
     expect(result.current.messages[0].answer).toBe('Final answer.');
     expect(result.current.messages[0].references).toEqual(finalResponse.references);
-    expect(result.current.messages[0].questionId).toBe('msg-final');
+    expect(result.current.messages[0].auditLogId).toBe(42);
     expect(result.current.messages[0].phase).toBe('complete');
   });
 
@@ -325,7 +351,12 @@ describe('useChartSearchAi', () => {
     const secondCallbacks = mockChatStream.mock.calls[1][3];
     act(() => {
       // Answer has landed (whole, via answer_done) and in-depth is generating; the user stops here.
-      secondCallbacks.onAnswerDone({ answer: 'Partial answer.', references: [], messageId: 'm-2' });
+      secondCallbacks.onAnswerDone({
+        answer: 'Partial answer.',
+        references: [],
+        messageId: 'm-2',
+        answerValidation: { status: 'validating', label: 'Checking answer' },
+      });
     });
 
     expect(result.current.messages).toHaveLength(2);
@@ -339,6 +370,7 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages[0].answer).toBe('Answer.');
     expect(result.current.messages[1].phase).toBe('complete');
     expect(result.current.messages[1].answer).toBe('Partial answer.');
+    expect(result.current.messages[1].answerValidation?.status).toBe('unavailable');
   });
 
   it('stopCurrent removes the message bubble when no answer was received', async () => {
@@ -504,7 +536,7 @@ describe('useChartSearchAi', () => {
     );
     expect(phase()).toBe('settled');
 
-    // indepth_pending (not a token) is what moves the turn into the 'in-depth' phase — the hub
+    // answer_validation now carries final grounding, so the answer is already safe to preempt.
     // delivers the in-depth answer whole on indepth_done, it does not token-stream it.
     act(() =>
       cb.onInDepthPending({
@@ -549,6 +581,30 @@ describe('useChartSearchAi', () => {
     });
   });
 
+  it('preserves a needs-review in-depth outcome through error and final events', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => result.current.submitQuestion('patient-uuid', 'Q?'));
+    const cb = mockChatStream.mock.calls[0][3];
+    const withheld = {
+      status: 'needs_review' as const,
+      answer: '',
+      error: 'All claims were withheld.',
+      validation: { mode: 'enforce', status: 'needs_review' },
+    };
+    act(() => {
+      cb.onAnswerDone({ answer: 'A.', references: [], messageId: 'm-1' });
+      cb.onInDepthError({ inDepth: withheld });
+    });
+    expect(result.current.messages[0].inDepth).toEqual(withheld);
+
+    act(() => cb.onDone({ answer: 'A.', references: [], inDepth: withheld }));
+    expect(result.current.messages[0].inDepth).toEqual(withheld);
+    expect(result.current.messages[0].phase).toBe('complete');
+  });
+
   it('settles immediately at answer_done when no validation is pending (no validator configured)', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
@@ -580,9 +636,18 @@ describe('useChartSearchAi', () => {
     act(() => {
       result.current.submitQuestion('patient-uuid', 'Q?');
     });
-    act(() => mockChatStream.mock.calls[0][3].onError('Stream failed'));
+    const callbacks = mockChatStream.mock.calls[0][3];
+    act(() =>
+      callbacks.onAnswerDone({
+        answer: 'Partial answer.',
+        references: [],
+        answerValidation: { status: 'validating', label: 'Checking answer' },
+      }),
+    );
+    act(() => callbacks.onError('Stream failed'));
 
     expect(result.current.messages[0].phase).toBe('error');
+    expect(result.current.messages[0].answerValidation?.status).toBe('unavailable');
   });
 
   // Interactive-first: the answer settles (answer + validation) BEFORE the terminal `done`, while
@@ -669,5 +734,47 @@ describe('useChartSearchAi', () => {
     expect(q2.question).toBe('Q2?');
     expect(q2.phase).toBe('answering');
     expect(result.current.isAwaitingAnswer).toBe(true);
+  });
+
+  it('preserves checked validation when a no-review profile preempts after final grounding', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q1?');
+    });
+    const firstController = mockChatStream.mock.calls[0][4] as AbortController;
+    const cb1 = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      cb1.onAnswerDone({
+        answer: 'A1',
+        references: [{ index: 1, groundingStatus: 'checking' }],
+        answerValidation: { status: 'validating', label: 'Checking answer' },
+        messageId: 'm-1',
+      });
+      cb1.onInDepthPending({
+        answer: 'A1',
+        references: [{ index: 1, groundingStatus: 'verified' }],
+        answerValidation: { status: 'checked', label: 'Checked' },
+        messageId: 'm-1',
+        inDepth: { status: 'pending', answer: '' },
+      });
+    });
+
+    expect(result.current.messages[0].phase).toBe('in-depth');
+    expect(result.current.messages[0].answerValidation?.status).toBe('checked');
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q2?');
+    });
+
+    expect(firstController.signal.aborted).toBe(true);
+    expect(result.current.messages[0].answerValidation).toEqual({
+      status: 'checked',
+      label: 'Checked',
+    });
+    expect(result.current.messages[0].inDepth?.status).toBe('failed');
   });
 });

@@ -24,7 +24,7 @@ interface AiResponsePanelProps {
   references: AiReference[];
   safetyWarnings?: AiSafetyWarning[];
   blocks?: AiBlock[];
-  questionId: string;
+  auditLogId?: number;
   error: string | null;
   /** The turn's lifecycle phase — drives which parts of the answer render (see {@link TurnPhase}). */
   phase: TurnPhase;
@@ -141,6 +141,9 @@ function stripCitations(answer: string): string {
 }
 
 function evidenceTitle(ref: AiReference): string {
+  if ((ref.title ?? '').trim()) {
+    return ref.title!.trim();
+  }
   const text = (ref.sourceText ?? '').replace(/^\s*\(\d{4}-\d{2}-\d{2}\)\s*/, '').trim();
   if (text) {
     return text.length > 88 ? `${text.slice(0, 85)}...` : text;
@@ -157,6 +160,8 @@ const EvidenceCard: React.FC<{ refItem: AiReference; patientUuid: string; t: Tra
   const title = evidenceTitle(refItem);
   const meta = [`[${refItem.index}]`, refItem.resourceType, refItem.date].filter(Boolean).join(' · ');
   const source = (refItem.sourceText ?? '').trim();
+  const sourceWithoutDate = source.replace(/^\s*\(\d{4}-\d{2}-\d{2}\)\s*/, '').trim();
+  const showSource = Boolean(source && source !== title && sourceWithoutDate !== title);
   const grounding = isDrugReference(refItem) ? referenceTag(t) : groundedTag(refItem, t);
   return (
     <div className={styles.evidenceCard}>
@@ -191,7 +196,7 @@ const EvidenceCard: React.FC<{ refItem: AiReference; patientUuid: string; t: Tra
       ) : (
         <div className={styles.evidenceTitleText}>{title}</div>
       )}
-      {source && <div className={styles.evidenceSource}>{source}</div>}
+      {showSource && <div className={styles.evidenceSource}>{source}</div>}
       {refItem.resourceUuid && (
         <div className={styles.evidenceUuid}>
           {t('sourceUuid', 'UUID')}: {refItem.resourceUuid}
@@ -330,7 +335,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   references,
   safetyWarnings,
   blocks,
-  questionId,
+  auditLogId,
   error,
   phase,
   patientUuid,
@@ -366,9 +371,14 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   const showSections =
     Boolean(answer) && (Boolean(inDepth) || Boolean(answerValidation) || (isTerminal(phase) && Boolean(confidence)));
   const sections = showSections ? splitSections(answer) : null;
-  const resolvedEvidence = references.filter((ref) => Boolean((ref.sourceText ?? '').trim()));
-  const shownEvidence = resolvedEvidence.slice(0, 5);
-  const overflowEvidence = resolvedEvidence.slice(5);
+  const evidence = references.filter(
+    (ref) =>
+      Boolean((ref.title ?? '').trim()) ||
+      Boolean((ref.sourceText ?? '').trim()) ||
+      ref.resolutionStatus === 'unresolved',
+  );
+  const shownEvidence = evidence.slice(0, 5);
+  const overflowEvidence = evidence.slice(5);
 
   return (
     // data-turn-phase exposes the whole turn's lifecycle to the DOM so behavior is observable
@@ -394,7 +404,8 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
             references={references}
             patientUuid={patientUuid}
           />
-          {/* Wrapper exposes the staged in-depth status to the DOM (pending | complete | failed) so
+          {/* Wrapper exposes the staged in-depth status to the DOM (pending | complete | failed |
+              needs_review) so
               it is observable — the three inner renderings otherwise share one testid and can't be
               told apart. display:contents keeps layout identical. */}
           {inDepth && (
@@ -411,11 +422,28 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                   )}
                 </div>
               )}
-              {inDepth.status === 'failed' && (
+              {(inDepth.status === 'failed' || inDepth.status === 'needs_review') && (
                 <div className={styles.csec} data-testid="section-in-depth">
-                  <div className={styles.ctitle}>In Depth</div>
-                  <div className={`${styles.caveat} ${styles.caveatYellow}`}>
-                    {inDepth.error ?? 'In-Depth could not be completed.'}
+                  <div className={styles.ctitle}>
+                    In Depth{' '}
+                    {inDepth.status === 'needs_review' && (
+                      <span className={`${styles.answerValidation} ${styles.answerValidation_needs_review}`}>
+                        {t('inDepthNeedsReview', 'Needs review')}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={`${styles.caveat} ${
+                      inDepth.status === 'needs_review' ? styles.caveatRed : styles.caveatYellow
+                    }`}
+                  >
+                    {inDepth.error ??
+                      (inDepth.status === 'needs_review'
+                        ? t(
+                            'inDepthWithheld',
+                            'In-Depth was withheld because its claims did not pass the chart and temporal checks.',
+                          )
+                        : t('inDepthFailed', 'In-Depth could not be completed.'))}
                   </div>
                 </div>
               )}
@@ -462,6 +490,16 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
           <summary className={styles.referencesLabel}>{t('citationDetails', 'Citation details')}</summary>
           <div className={styles.referencesList}>
             {references.map((ref) => {
+              if ((ref.sourceText ?? '').trim()) {
+                const diagnostics = [`[${ref.index}]`, ref.sourceId, ref.resolutionStatus, ref.groundingStatus]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
+                  <code key={ref.index} className={styles.referenceTagInert}>
+                    {diagnostics}
+                  </code>
+                );
+              }
               const url = buildReferenceUrl(ref, patientUuid);
               const drugReference = isDrugReference(ref);
               const label = drugReference
@@ -496,7 +534,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         </details>
       )}
 
-      {resolvedEvidence.length > 0 && (
+      {evidence.length > 0 && (
         <div className={styles.evidenceSection}>
           <div className={styles.evidenceSectionTitle}>{t('evidenceUsed', 'Evidence Used')}</div>
           <div className={styles.evidenceGrid}>
@@ -544,8 +582,8 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
       {answer && isTerminal(phase) && (
         <div className={styles.actionsRow}>
           <div className={styles.actionsLeft}>
-            {questionId ? (
-              <AiFeedback key={questionId} questionId={questionId} onComplete={onFeedbackComplete} />
+            {auditLogId ? (
+              <AiFeedback key={auditLogId} auditLogId={auditLogId} onComplete={onFeedbackComplete} />
             ) : (
               <span />
             )}

@@ -14,7 +14,7 @@ const seedSession = () =>
           answer: 'a',
           references: [],
           safetyWarnings: [],
-          questionId: '',
+          auditLogId: undefined,
           phase: 'complete',
           error: null,
         },

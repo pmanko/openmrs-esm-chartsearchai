@@ -23,6 +23,8 @@ export interface AiReference {
   date: string;
   /** Resolved source record text, when supplied by the hub staged path. */
   sourceText?: string;
+  /** Human-readable source title supplied by the evidence ledger. */
+  title?: string;
   /** Whether the citation index resolved to a record in this turn's evidence ledger. */
   resolutionStatus?: 'resolved' | 'unresolved';
   /** Answer, In-Depth, or table locations that used this source. */
@@ -100,9 +102,10 @@ export interface AiConfidence {
 }
 
 export interface AiInDepth {
-  status: 'pending' | 'complete' | 'failed';
+  status: 'pending' | 'complete' | 'failed' | 'needs_review';
   answer?: string;
   error?: string;
+  validation?: unknown;
 }
 
 export type AiAnswerValidationStatus = 'validating' | 'checked' | 'edited' | 'needs_review' | 'unavailable';
@@ -122,7 +125,8 @@ export interface AiSearchResponse {
   /** Deterministic safety advisories emitted by the selected hub profile. */
   safetyWarnings?: AiSafetyWarning[];
   blocks?: AiBlock[];
-  questionId?: string;
+  /** Numeric OpenMRS audit row id used only for feedback. */
+  auditLogId?: number;
   /** Server-side conversation handle. Present on chat responses only. */
   session?: string;
   /** Server-assigned uuid for the assistant message row. Present on chat responses only. */
@@ -139,6 +143,7 @@ export interface AiSearchResponse {
 
 export interface ChatHistoryMessage {
   messageId: string;
+  auditLogId?: number;
   role: 'user' | 'assistant' | 'system';
   content: string;
   references?: AiReference[];
@@ -159,7 +164,7 @@ export interface ChatHistoryResponse {
 export type FeedbackRating = 'positive' | 'negative';
 
 export interface AiFeedback {
-  questionId: string;
+  auditLogId: number;
   rating: FeedbackRating;
   comment?: string;
 }
