@@ -340,7 +340,7 @@ describe('AiResponsePanel citation grounding', () => {
 
   function renderWithGrounded(
     grounded: boolean | null,
-    groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked',
+    groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked' | 'mixed',
     groundingScope?: 'record' | 'source_set',
   ) {
     render(
@@ -383,6 +383,21 @@ describe('AiResponsePanel citation grounding', () => {
   it('labels a collective verdict as source-set support rather than individual-record support', () => {
     renderWithGrounded(true, 'verified', 'source_set');
     expect(screen.getByTitle('Supports this claim together with the other cited records.')).toBeInTheDocument();
+  });
+
+  it('labels a negative collective verdict as a source-set result', () => {
+    renderWithGrounded(false, 'unsupported', 'source_set');
+    expect(
+      screen.getByTitle('This cited source set may not support the associated claim — verify against the chart.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not collapse mixed claim-level support into a verified or unsupported record', () => {
+    renderWithGrounded(null, 'mixed', 'source_set');
+    expect(screen.getByText('Mixed support')).toBeInTheDocument();
+    expect(
+      screen.getByTitle('This record supports some associated claims but not others — inspect the evidence details.'),
+    ).toBeInTheDocument();
   });
 
   it('shows no grounding badge when the verdict is null (unverified)', () => {

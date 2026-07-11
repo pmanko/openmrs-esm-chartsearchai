@@ -32,11 +32,19 @@ export interface AiReference {
    * Lifecycle/status for citation grounding. `checking` means the backend has resolved
    * the source record but final support verification is still running.
    */
-  groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked';
+  groundingStatus?: 'checking' | 'verified' | 'unsupported' | 'unchecked' | 'mixed';
   /** Whether support was evaluated from this record alone or a cited source set. */
   groundingScope?: 'record' | 'source_set';
   /** Citation indices evaluated together when groundingScope is source_set. */
   groundingGroup?: number[];
+  /** Claim/path-level verdicts retained when one record is used more than once. */
+  groundingChecks?: Array<{
+    status: 'verified' | 'unsupported' | 'unchecked';
+    claim: string;
+    location: string;
+    path?: string;
+    source_indices: number[];
+  }>;
 }
 
 /**

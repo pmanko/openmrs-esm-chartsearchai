@@ -76,10 +76,26 @@ function groundedTag(ref: AiReference, t: Translate): GroundedTag | null {
     };
   }
   if (ref.grounded === false || ref.groundingStatus === 'unsupported') {
+    const sourceSet = ref.groundingScope === 'source_set';
     return {
       type: 'red',
       text: t('notGrounded', 'Unsupported'),
-      title: t('notGroundedTitle', 'The cited record may not support this statement — verify against the chart.'),
+      title: sourceSet
+        ? t(
+            'notGroundedSourceSetTitle',
+            'This cited source set may not support the associated claim — verify against the chart.',
+          )
+        : t('notGroundedTitle', 'The cited record may not support this statement — verify against the chart.'),
+    };
+  }
+  if (ref.groundingStatus === 'mixed') {
+    return {
+      type: 'red',
+      text: t('groundingMixed', 'Mixed support'),
+      title: t(
+        'groundingMixedTitle',
+        'This record supports some associated claims but not others — inspect the evidence details.',
+      ),
     };
   }
   return null;
