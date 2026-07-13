@@ -75,7 +75,7 @@ describe('useChartSearchAi', () => {
     });
   });
 
-  it('hydrates a stale validating answer as check unavailable', async () => {
+  it('hydrates a stale checking answer as check unavailable', async () => {
     mockFetchHistory.mockResolvedValueOnce({
       session: 'srv-session-1',
       messages: [
@@ -84,7 +84,7 @@ describe('useChartSearchAi', () => {
           messageId: 'a-1',
           role: 'assistant',
           content: 'First A',
-          answerValidation: { status: 'validating', label: 'Checking answer' },
+          answerValidation: { status: 'checking', label: 'Checking answer' },
           createdAt: 2,
         },
       ],
@@ -379,7 +379,7 @@ describe('useChartSearchAi', () => {
         answer: 'Partial answer.',
         references: [],
         messageId: 'm-2',
-        answerValidation: { status: 'validating', label: 'Checking answer' },
+        answerValidation: { status: 'checking', label: 'Checking answer' },
       });
     });
 
@@ -544,11 +544,11 @@ describe('useChartSearchAi', () => {
       cb.onAnswerDone({
         answer: 'Aspirin [1].',
         references: [],
-        answerValidation: { status: 'validating', label: 'Checking answer' },
+        answerValidation: { status: 'checking', label: 'Checking answer' },
         messageId: 'm-1',
       }),
     );
-    expect(phase()).toBe('validating');
+    expect(phase()).toBe('checking');
 
     act(() =>
       cb.onAnswerValidation({
@@ -638,7 +638,7 @@ describe('useChartSearchAi', () => {
       result.current.submitQuestion('patient-uuid', 'Q?');
     });
     // answer_done with NO answerValidation → no validation phase is coming; settle now so the composer
-    // unlocks (mirrors the hub emitting answer_done without a `validating` status when no validator).
+    // unlocks (mirrors the hub emitting answer_done without a `checking` status when no validator).
     act(() =>
       mockChatStream.mock.calls[0][3].onAnswerDone({
         answer: 'A [1].',
@@ -665,7 +665,7 @@ describe('useChartSearchAi', () => {
       callbacks.onAnswerDone({
         answer: 'Partial answer.',
         references: [],
-        answerValidation: { status: 'validating', label: 'Checking answer' },
+        answerValidation: { status: 'checking', label: 'Checking answer' },
       }),
     );
     act(() => callbacks.onError('Stream failed'));
@@ -775,7 +775,7 @@ describe('useChartSearchAi', () => {
       cb1.onAnswerDone({
         answer: 'A1',
         references: [{ index: 1, groundingStatus: 'checking' }],
-        answerValidation: { status: 'validating', label: 'Checking answer' },
+        answerValidation: { status: 'checking', label: 'Checking answer' },
         messageId: 'm-1',
       });
       cb1.onInDepthPending({

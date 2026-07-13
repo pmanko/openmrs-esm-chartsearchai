@@ -855,7 +855,7 @@ describe('AiResponsePanel answer-validation lifecycle', () => {
   };
 
   it.each([
-    ['validating', 'Checking answer'],
+    ['checking', 'Checking answer'],
     ['checked', 'Checked'],
     ['edited', 'Updated after check'],
     ['needs_review', 'Needs review'],

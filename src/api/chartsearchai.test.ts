@@ -133,7 +133,7 @@ describe('chatPatientChartStream', () => {
       .spyOn(window, 'fetch')
       .mockResolvedValueOnce(
         mockStreamResponse([
-          'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"validating","label":"Checking answer"},"inDepth":{"status":"pending","answer":""}}\n\n',
+          'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checking","label":"Checking answer"},"inDepth":{"status":"pending","answer":""}}\n\n',
           'event:answer_validation\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checked","label":"Checked"}}\n\n',
           'event:indepth_pending\ndata: {"messageId":"m1","inDepth":{"status":"pending","answer":""}}\n\n',
           'event:indepth_done\ndata: {"status":"complete","answer":"- background"}\n\n',
@@ -149,7 +149,7 @@ describe('chatPatientChartStream', () => {
       expect.objectContaining({
         answer: 'Direct answer',
         resolvedModel: 'med-agent-team-high-validated',
-        answerValidation: { status: 'validating', label: 'Checking answer' },
+        answerValidation: { status: 'checking', label: 'Checking answer' },
         inDepth: { status: 'pending', answer: '' },
       }),
     );

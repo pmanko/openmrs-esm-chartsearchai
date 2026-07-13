@@ -251,7 +251,7 @@ const ConfidenceChip: React.FC<{ level: string }> = ({ level }) => {
 };
 
 const validationLabelFallback: Record<string, string> = {
-  validating: 'Checking answer',
+  checking: 'Checking answer',
   checked: 'Checked',
   edited: 'Updated after check',
   needs_review: 'Needs review',

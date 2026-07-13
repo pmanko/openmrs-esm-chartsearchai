@@ -46,7 +46,7 @@ export interface ChatMessage {
 interface UseChartSearchAiReturn {
   messages: ChatMessage[];
   /**
-   * The latest turn is still producing its direct answer ({@link TurnPhase} `answering`/`validating`).
+   * The latest turn is still producing or checking its direct answer ({@link TurnPhase} `answering`/`checking`).
    * The composer disables on this — so a new question can be asked while the prior turn's in-depth is
    * still streaming in the background.
    */
@@ -144,7 +144,7 @@ function interruptInDepth(inDepth?: AiInDepth): AiInDepth | undefined {
 function interruptAnswerValidation(
   validation?: AiSearchResponse['answerValidation'],
 ): AiSearchResponse['answerValidation'] | undefined {
-  if (!validation || validation.status !== 'validating') return validation;
+  if (!validation || validation.status !== 'checking') return validation;
   return {
     ...validation,
     status: 'unavailable',
@@ -391,7 +391,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
           const updated = [...prev];
-          const phase = response.answerValidation?.status === 'validating' ? 'validating' : 'settled';
+          const phase = response.answerValidation?.status === 'checking' ? 'checking' : 'settled';
           updated[idx] = applyTurnEnvelope(
             updated[idx],
             { ...response, inDepth: response.inDepth ?? { status: 'pending', answer: '' } },
@@ -524,7 +524,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
 
   // Only the last message can ever be in flight; a new turn either blocks (answer not yet settled)
   // or preempts the trailing in-depth, so checking just the tail is sound. The composer locks only
-  // while the direct answer is being produced (answering/validating) — a settled answer unlocks it
+  // while the direct answer is being produced or checked (answering/checking) — a settled answer unlocks it
   // even while in-depth still streams.
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
   const isAwaitingAnswer = lastMessage ? phaseIsAwaitingAnswer(lastMessage.phase) : false;

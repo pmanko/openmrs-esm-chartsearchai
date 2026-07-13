@@ -108,7 +108,7 @@ export interface AiInDepth {
   validation?: unknown;
 }
 
-export type AiAnswerValidationStatus = 'validating' | 'checked' | 'edited' | 'needs_review' | 'unavailable';
+export type AiAnswerValidationStatus = 'checking' | 'checked' | 'edited' | 'needs_review' | 'unavailable';
 
 export interface AiAnswerValidation {
   status: AiAnswerValidationStatus;
