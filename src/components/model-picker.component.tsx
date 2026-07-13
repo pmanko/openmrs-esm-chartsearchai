@@ -26,7 +26,12 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
+    if (showModelPicker === false) {
+      chatSessionStore.setState({ profileDiscoveryStatus: 'disabled' });
+      return;
+    }
     const controller = new AbortController();
+    chatSessionStore.setState({ profileDiscoveryStatus: 'loading' });
     fetchProfiles(controller)
       .then((result) => {
         setData(result);
@@ -36,10 +41,11 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
         if (error?.name !== 'AbortError') {
           setData(null);
           setLoadFailed(true);
+          chatSessionStore.setState({ selectedProfileId: null, profileDiscoveryStatus: 'unavailable' });
         }
       });
     return () => controller.abort();
-  }, []);
+  }, [showModelPicker]);
 
   const productProfiles = useMemo(
     () => (Array.isArray(data?.data) ? data.data : []).filter((profile) => profile.visibility === 'product'),
@@ -56,11 +62,15 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   );
 
   useEffect(() => {
-    const nextId = effectiveProfile?.id ?? null;
-    if (nextId !== selectedProfileId) {
-      chatSessionStore.setState({ selectedProfileId: nextId });
+    if (showModelPicker === false || !data) {
+      return;
     }
-  }, [effectiveProfile, selectedProfileId]);
+    const nextId = effectiveProfile?.id ?? null;
+    const profileDiscoveryStatus = nextId ? 'ready' : 'unavailable';
+    if (nextId !== selectedProfileId || chatSessionStore.getState().profileDiscoveryStatus !== profileDiscoveryStatus) {
+      chatSessionStore.setState({ selectedProfileId: nextId, profileDiscoveryStatus });
+    }
+  }, [data, effectiveProfile, selectedProfileId, showModelPicker]);
 
   const sections = useMemo<ProfileSection[]>(() => {
     const definitions = [
@@ -88,12 +98,27 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     [onSwitched],
   );
 
-  if (showModelPicker === false || loadFailed || !data || productProfiles.length === 0) {
+  if (showModelPicker === false || !data) {
+    if (loadFailed) {
+      return (
+        <div className={styles.root} role="status">
+          {t('profilesUnavailable', 'AI profiles unavailable')}
+        </div>
+      );
+    }
     return null;
   }
 
+  if (productProfiles.length === 0 || !effectiveProfile) {
+    return (
+      <div className={styles.root} role="status">
+        {t('profilesUnavailable', 'AI profiles unavailable')}
+      </div>
+    );
+  }
+
   const unavailableProfiles = productProfiles.filter((profile) => !profile.available);
-  const triggerLabel = effectiveProfile?.label ?? t('noProfileAvailable', 'No profile available');
+  const triggerLabel = effectiveProfile.label;
 
   return (
     <div className={styles.root}>

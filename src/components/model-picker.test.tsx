@@ -56,7 +56,12 @@ const openMenu = async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseConfig.mockReturnValue({ showModelPicker: true });
-  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedProfileId: null });
+  chatSessionStore.setState({
+    messagesByPatient: {},
+    sessionUuidByPatient: {},
+    selectedProfileId: null,
+    profileDiscoveryStatus: 'loading',
+  });
   mockFetch.mockReturnValue(new Promise(() => {}));
 });
 
@@ -70,11 +75,14 @@ describe('ModelPicker', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('hides when profile discovery fails', async () => {
+  it('shows an unavailable state and clears selection when profile discovery fails', async () => {
+    chatSessionStore.setState({ selectedProfileId: 'stale-profile' });
     mockFetch.mockRejectedValueOnce(new Error('unavailable'));
-    const { container } = render(<ModelPicker />);
-    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
-    expect(container).toBeEmptyDOMElement();
+    render(<ModelPicker />);
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/AI profiles unavailable/i);
+    expect(chatSessionStore.getState().selectedProfileId).toBeNull();
+    expect(chatSessionStore.getState().profileDiscoveryStatus).toBe('unavailable');
   });
 
   it('uses the available hub-advertised default and authoritative labels', async () => {
@@ -82,6 +90,7 @@ describe('ModelPicker', () => {
     render(<ModelPicker />);
 
     await waitFor(() => expect(chatSessionStore.getState().selectedProfileId).toBe('single-e4b-checked'));
+    expect(chatSessionStore.getState().profileDiscoveryStatus).toBe('ready');
     await openMenu();
     expect(screen.getByRole('menuitem', { name: /Single profiles/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /Team profiles/i })).toBeInTheDocument();
@@ -134,7 +143,8 @@ describe('ModelPicker', () => {
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalled());
     expect(chatSessionStore.getState().selectedProfileId).toBeNull();
-    expect(await screen.findByRole('button', { name: /No profile available/i })).toBeInTheDocument();
+    expect(chatSessionStore.getState().profileDiscoveryStatus).toBe('unavailable');
+    expect(await screen.findByRole('status')).toHaveTextContent(/AI profiles unavailable/i);
   });
 
   it('portals the Carbon menu outside the picker subtree', async () => {

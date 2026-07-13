@@ -16,7 +16,12 @@ const mockStartNewChat = startNewChat as Mock;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedProfileId: null });
+  chatSessionStore.setState({
+    messagesByPatient: {},
+    sessionUuidByPatient: {},
+    selectedProfileId: null,
+    profileDiscoveryStatus: 'disabled',
+  });
   // Default: empty hydration so tests opt-in to populated history.
   mockFetchHistory.mockResolvedValue({ session: 'srv-session-default', messages: [] });
 });
@@ -125,6 +130,25 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       // No per-session pick → null backend → server uses its config default.
       null,
+    );
+  });
+
+  it('does not call chat when product profile discovery is unavailable', () => {
+    chatSessionStore.setState({ profileDiscoveryStatus: 'unavailable', selectedProfileId: null });
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What meds?');
+    });
+
+    expect(mockChatStream).not.toHaveBeenCalled();
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toEqual(
+      expect.objectContaining({
+        question: 'What meds?',
+        phase: 'error',
+        error: 'AI profiles are unavailable. Check the med-agent-hub connection.',
+      }),
     );
   });
 

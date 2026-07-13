@@ -12,12 +12,15 @@ export interface ChatSessionState {
   sessionUuidByPatient: Record<string, string | null>;
   /** Hub product profile selected for this browser session. */
   selectedProfileId: string | null;
+  /** Whether product-profile discovery can safely authorize a chat request. */
+  profileDiscoveryStatus: 'loading' | 'ready' | 'unavailable' | 'disabled';
 }
 
 export const chatSessionStore = createGlobalStore<ChatSessionState>('chartsearchai-chat-session', {
   messagesByPatient: {},
   sessionUuidByPatient: {},
   selectedProfileId: null,
+  profileDiscoveryStatus: 'loading',
 });
 
 export function setupChatSessionLogoutCleanup(): () => void {
@@ -27,7 +30,12 @@ export function setupChatSessionLogoutCleanup(): () => void {
   return sessionStore.subscribe((state) => {
     const currentUserUuid = readUserUuid(state);
     if (currentUserUuid !== previousUserUuid) {
-      chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedProfileId: null });
+      chatSessionStore.setState({
+        messagesByPatient: {},
+        sessionUuidByPatient: {},
+        selectedProfileId: null,
+        profileDiscoveryStatus: 'loading',
+      });
       previousUserUuid = currentUserUuid;
     }
   });

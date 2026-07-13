@@ -271,6 +271,24 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
 
   const submitQuestion = useCallback(
     (patientUuid: string, question: string) => {
+      const discoveryStatus = chatSessionStore.getState().profileDiscoveryStatus;
+      if (discoveryStatus !== 'ready' && discoveryStatus !== 'disabled') {
+        const error =
+          discoveryStatus === 'loading'
+            ? 'AI profiles are still loading. Try again in a moment.'
+            : 'AI profiles are unavailable. Check the med-agent-hub connection.';
+        const failedMessage: ChatMessage = {
+          id: generateId(),
+          question,
+          answer: '',
+          references: [],
+          auditLogId: undefined,
+          phase: 'error',
+          error,
+        };
+        updateMessages(patientUuid, (prev) => [...prev, failedMessage]);
+        return;
+      }
       if (abortControllerRef.current) {
         // A turn is still in flight. If its answer has NOT settled yet, don't start a second
         // answer generation (one at a time — this is what keeps the server's getLastOrdinal()
