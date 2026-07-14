@@ -99,17 +99,14 @@ describe('chatPatientChartStream', () => {
     expect(sentBody()).not.toHaveProperty('staged');
   });
 
-  it('omits the profile when none is selected so the relay uses its configured fallback', async () => {
+  it('rejects an empty profile instead of relying on a relay fallback', () => {
     const cb = makeCallbacks();
-    fetchSpy = vi
-      .spyOn(window, 'fetch')
-      .mockResolvedValueOnce(mockStreamResponse(['event:done\ndata: {"answer":"ok","references":[]}\n\n']));
+    fetchSpy = vi.spyOn(window, 'fetch');
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb);
-    await flushPromises();
-
-    const body = sentBody();
-    expect(body).not.toHaveProperty('profile');
+    expect(() => chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, '')).toThrow(
+      'A product profile is required',
+    );
+    expect(window.fetch).not.toHaveBeenCalled();
   });
 
   it("maps the done event's `model` field onto resolvedModel", async () => {
@@ -120,7 +117,7 @@ describe('chatPatientChartStream', () => {
         mockStreamResponse(['event:done\ndata: {"answer":"ok","references":[],"model":"med-agent-team"}\n\n']),
       );
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb);
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked');
     await flushPromises();
 
     expect(cb.onDone).toHaveBeenCalledWith(expect.objectContaining({ resolvedModel: 'med-agent-team' }));

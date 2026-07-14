@@ -289,6 +289,20 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => [...prev, failedMessage]);
         return;
       }
+      const selectedProfileId = chatSessionStore.getState().selectedProfileId;
+      if (!selectedProfileId) {
+        const failedMessage: ChatMessage = {
+          id: generateId(),
+          question,
+          answer: '',
+          references: [],
+          auditLogId: undefined,
+          phase: 'error',
+          error: 'No AI profile is selected. Refresh the available profiles and try again.',
+        };
+        updateMessages(patientUuid, (prev) => [...prev, failedMessage]);
+        return;
+      }
       if (abortControllerRef.current) {
         // A turn is still in flight. If its answer has NOT settled yet, don't start a second
         // answer generation (one at a time — this is what keeps the server's getLastOrdinal()
@@ -479,8 +493,6 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       };
 
       const sessionUuid = sessionUuidByPatient[patientUuid] ?? null;
-      // Read the latest hub product-profile selection at submit time.
-      const selectedProfileId = chatSessionStore.getState().selectedProfileId;
 
       try {
         // Multi-turn streaming: chat history is reconstructed server-side

@@ -151,6 +151,25 @@ describe('useChartSearchAi', () => {
     );
   });
 
+  it('does not call chat when discovery is ready without a selected product profile', () => {
+    chatSessionStore.setState({ profileDiscoveryStatus: 'ready', selectedProfileId: null });
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What meds?');
+    });
+
+    expect(mockChatStream).not.toHaveBeenCalled();
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toEqual(
+      expect.objectContaining({
+        question: 'What meds?',
+        phase: 'error',
+        error: 'No AI profile is selected. Refresh the available profiles and try again.',
+      }),
+    );
+  });
+
   it('captures session uuid via onSession and reuses it on the next submit', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));

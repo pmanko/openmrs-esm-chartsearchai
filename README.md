@@ -62,7 +62,7 @@ All endpoints are served by the backend module under `/ws/rest/v1/chartsearchai/
 | POST | `/chat/new` | Close the active session and open a fresh one |
 | GET | `/models` | Relay med-agent-hub product-profile metadata |
 
-Request body: `{ "patient": "<uuid>", "question": "<text>", "session": "<uuid, optional>", "profile": "<hub product profile, optional>" }`
+Request body: `{ "patient": "<uuid>", "question": "<text>", "session": "<uuid, optional>", "profile": "<required hub product profile>" }`
 
 Response (`POST /chat`, and the final `done` event of `POST /chat/stream`):
 ```json

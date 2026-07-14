@@ -194,6 +194,7 @@ export async function submitFeedback(feedback: AiFeedback): Promise<void> {
  * ReadableStream). The staged endpoint emits answer/validation/in-depth boundary events:
  *   - sends an optional {@code session} uuid so the server can reuse the
  *     prior conversation thread
+ *   - sends the selected hub product profile for every request
  *   - captures the server's {@code X-ChartSearchAi-Session} response header
  *     and surfaces it via {@code onSession} before the first content event arrives
  *
@@ -214,18 +215,17 @@ export function chatPatientChartStream(
     onDone: (response: AiSearchResponse) => void;
     onError: (error: string) => void;
   },
-  abortController?: AbortController,
-  profileId?: string | null,
+  abortController: AbortController | undefined,
+  profileId: string,
 ): void {
+  if (!profileId.trim()) {
+    throw new Error('A product profile is required');
+  }
+
   const url = `${window.openmrsBase}${BASE_PATH}/chat/stream`;
-  const body: Record<string, string> = { patient: patientUuid, question };
+  const body: Record<string, string> = { patient: patientUuid, question, profile: profileId };
   if (sessionUuid) {
     body.session = sessionUuid;
-  }
-  // Product profile selection is the only client-controlled inference input.
-  // The Java relay owns the hub endpoint; med-agent-hub owns stage composition.
-  if (profileId) {
-    body.profile = profileId;
   }
 
   window
