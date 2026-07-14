@@ -108,6 +108,8 @@ export interface AiInDepth {
   validation?: unknown;
 }
 
+type AiInDepthEvent = Partial<AiSearchResponse> & { messageId?: string; inDepth: AiInDepth };
+
 export type AiAnswerValidationStatus = 'checking' | 'checked' | 'edited' | 'needs_review' | 'unavailable';
 
 export interface AiAnswerValidation {
@@ -206,9 +208,9 @@ export function chatPatientChartStream(
     onSession: (uuid: string) => void;
     onAnswerDone?: (response: AiSearchResponse) => void;
     onAnswerValidation?: (response: AiSearchResponse) => void;
-    onInDepthPending?: (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => void;
-    onInDepthDone?: (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => void;
-    onInDepthError?: (payload: Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth }) => void;
+    onInDepthPending?: (payload: AiInDepthEvent) => void;
+    onInDepthDone?: (payload: AiInDepthEvent) => void;
+    onInDepthError?: (payload: AiInDepthEvent) => void;
     onDone: (response: AiSearchResponse) => void;
     onError: (error: string) => void;
   },
@@ -303,23 +305,25 @@ export function chatPatientChartStream(
           }
         } else if (eventType === 'indepth_pending') {
           try {
-            callbacks.onInDepthPending?.(
-              JSON.parse(data) as Partial<AiSearchResponse> & { messageId?: string; inDepth?: AiInDepth },
-            );
+            const raw = JSON.parse(data) as AiInDepthEvent;
+            if (!raw.inDepth || typeof raw.inDepth !== 'object') throw new Error('missing inDepth');
+            callbacks.onInDepthPending?.(raw);
           } catch {
             callbacks.onError('Failed to parse in-depth pending response');
           }
         } else if (eventType === 'indepth_done') {
           try {
-            const raw = JSON.parse(data) as Partial<AiSearchResponse> & AiInDepth;
-            callbacks.onInDepthDone?.(raw.inDepth ? raw : { inDepth: raw });
+            const raw = JSON.parse(data) as AiInDepthEvent;
+            if (!raw.inDepth || typeof raw.inDepth !== 'object') throw new Error('missing inDepth');
+            callbacks.onInDepthDone?.(raw);
           } catch {
             callbacks.onError('Failed to parse in-depth response');
           }
         } else if (eventType === 'indepth_error') {
           try {
-            const raw = JSON.parse(data) as Partial<AiSearchResponse> & AiInDepth;
-            callbacks.onInDepthError?.(raw.inDepth ? raw : { inDepth: raw });
+            const raw = JSON.parse(data) as AiInDepthEvent;
+            if (!raw.inDepth || typeof raw.inDepth !== 'object') throw new Error('missing inDepth');
+            callbacks.onInDepthError?.(raw);
           } catch {
             callbacks.onError('Failed to parse in-depth error response');
           }

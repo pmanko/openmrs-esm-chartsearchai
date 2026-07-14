@@ -66,12 +66,19 @@ beforeEach(() => {
 });
 
 describe('ModelPicker', () => {
-  it('renders nothing while metadata is loading or when disabled', () => {
-    const { container, rerender } = render(<ModelPicker />);
+  it('renders nothing while metadata is loading', () => {
+    const { container } = render(<ModelPicker />);
     expect(container).toBeEmptyDOMElement();
+  });
 
+  it('still discovers and selects the hub default when the picker is hidden', async () => {
     mockUseConfig.mockReturnValue({ showModelPicker: false });
-    rerender(<ModelPicker />);
+    mockFetch.mockResolvedValueOnce(PROFILE_DATA);
+    const { container } = render(<ModelPicker />);
+
+    await waitFor(() => expect(chatSessionStore.getState().selectedProfileId).toBe('single-e4b-checked'));
+    expect(chatSessionStore.getState().profileDiscoveryStatus).toBe('ready');
+    expect(mockFetch).toHaveBeenCalledOnce();
     expect(container).toBeEmptyDOMElement();
   });
 

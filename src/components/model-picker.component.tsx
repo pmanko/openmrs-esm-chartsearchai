@@ -26,10 +26,6 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
-    if (showModelPicker === false) {
-      chatSessionStore.setState({ profileDiscoveryStatus: 'disabled' });
-      return;
-    }
     const controller = new AbortController();
     chatSessionStore.setState({ profileDiscoveryStatus: 'loading' });
     fetchProfiles(controller)
@@ -45,7 +41,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
         }
       });
     return () => controller.abort();
-  }, [showModelPicker]);
+  }, []);
 
   const productProfiles = useMemo(
     () => (Array.isArray(data?.data) ? data.data : []).filter((profile) => profile.visibility === 'product'),
@@ -62,7 +58,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   );
 
   useEffect(() => {
-    if (showModelPicker === false || !data) {
+    if (!data) {
       return;
     }
     const nextId = effectiveProfile?.id ?? null;
@@ -70,7 +66,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     if (nextId !== selectedProfileId || chatSessionStore.getState().profileDiscoveryStatus !== profileDiscoveryStatus) {
       chatSessionStore.setState({ selectedProfileId: nextId, profileDiscoveryStatus });
     }
-  }, [data, effectiveProfile, selectedProfileId, showModelPicker]);
+  }, [data, effectiveProfile, selectedProfileId]);
 
   const sections = useMemo<ProfileSection[]>(() => {
     const definitions = [
@@ -98,7 +94,11 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     [onSwitched],
   );
 
-  if (showModelPicker === false || !data) {
+  if (showModelPicker === false) {
+    return null;
+  }
+
+  if (!data) {
     if (loadFailed) {
       return (
         <div className={styles.root} role="status">

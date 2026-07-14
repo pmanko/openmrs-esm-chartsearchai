@@ -272,7 +272,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
   const submitQuestion = useCallback(
     (patientUuid: string, question: string) => {
       const discoveryStatus = chatSessionStore.getState().profileDiscoveryStatus;
-      if (discoveryStatus !== 'ready' && discoveryStatus !== 'disabled') {
+      if (discoveryStatus !== 'ready') {
         const error =
           discoveryStatus === 'loading'
             ? 'AI profiles are still loading. Try again in a moment.'

@@ -25,7 +25,12 @@ const seedSession = () =>
   });
 
 beforeEach(() => {
-  chatSessionStore.setState({ messagesByPatient: {}, sessionUuidByPatient: {}, selectedProfileId: null });
+  chatSessionStore.setState({
+    messagesByPatient: {},
+    sessionUuidByPatient: {},
+    selectedProfileId: null,
+    profileDiscoveryStatus: 'loading',
+  });
   sessionStore.setState({ loaded: false, session: null });
 });
 

@@ -19,8 +19,8 @@ beforeEach(() => {
   chatSessionStore.setState({
     messagesByPatient: {},
     sessionUuidByPatient: {},
-    selectedProfileId: null,
-    profileDiscoveryStatus: 'disabled',
+    selectedProfileId: 'single-e4b-checked',
+    profileDiscoveryStatus: 'ready',
   });
   // Default: empty hydration so tests opt-in to populated history.
   mockFetchHistory.mockResolvedValue({ session: 'srv-session-default', messages: [] });
@@ -128,8 +128,7 @@ describe('useChartSearchAi', () => {
         onError: expect.any(Function),
       }),
       expect.any(AbortController),
-      // No per-session pick → null backend → server uses its config default.
-      null,
+      'single-e4b-checked',
     );
   });
 
@@ -178,7 +177,7 @@ describe('useChartSearchAi', () => {
       'Q2',
       expect.any(Object),
       expect.any(AbortController),
-      null,
+      'single-e4b-checked',
     );
   });
 

@@ -136,7 +136,7 @@ describe('chatPatientChartStream', () => {
           'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checking","label":"Checking answer"},"inDepth":{"status":"pending","answer":""}}\n\n',
           'event:answer_validation\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checked","label":"Checked"}}\n\n',
           'event:indepth_pending\ndata: {"messageId":"m1","inDepth":{"status":"pending","answer":""}}\n\n',
-          'event:indepth_done\ndata: {"status":"complete","answer":"- background"}\n\n',
+          'event:indepth_done\ndata: {"inDepth":{"status":"complete","answer":"- background"}}\n\n',
           'event:done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","inDepth":{"status":"complete","answer":"- background"}}\n\n',
         ]),
       );
@@ -172,5 +172,20 @@ describe('chatPatientChartStream', () => {
       }),
     );
     expect(cb.onError).not.toHaveBeenCalled();
+  });
+
+  it('rejects the retired flat in-depth event wire', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse(['event:indepth_done\ndata: {"status":"complete","answer":"retired wire"}\n\n']),
+      );
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked');
+    await flushPromises();
+
+    expect(cb.onInDepthDone).not.toHaveBeenCalled();
+    expect(cb.onError).toHaveBeenCalledWith('Failed to parse in-depth response');
   });
 });

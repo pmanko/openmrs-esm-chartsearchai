@@ -13,7 +13,7 @@ export interface ChatSessionState {
   /** Hub product profile selected for this browser session. */
   selectedProfileId: string | null;
   /** Whether product-profile discovery can safely authorize a chat request. */
-  profileDiscoveryStatus: 'loading' | 'ready' | 'unavailable' | 'disabled';
+  profileDiscoveryStatus: 'loading' | 'ready' | 'unavailable';
 }
 
 export const chatSessionStore = createGlobalStore<ChatSessionState>('chartsearchai-chat-session', {
