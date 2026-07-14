@@ -821,18 +821,48 @@ describe('AiResponsePanel staged in-depth status', () => {
     expect(container.querySelector('[data-indepth-status="pending"]')).not.toBeInTheDocument();
   });
 
+  it('shows when a completed in-depth was updated by its checks', () => {
+    render(
+      <AiResponsePanel
+        {...stagedBase}
+        phase="complete"
+        inDepth={{
+          status: 'complete',
+          answer: 'Checked detail [1].',
+          validation: { status: 'edited' },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('section-in-depth')).toHaveTextContent('Updated after check');
+  });
+
   it('keeps a withheld in-depth visible as needs review', () => {
     const { container } = render(
       <AiResponsePanel
         {...stagedBase}
         phase="complete"
-        inDepth={{ status: 'needs_review', answer: '', error: 'All claims were withheld.' }}
+        inDepth={{
+          status: 'needs_review',
+          answer: '',
+          error: 'All claims were withheld.',
+          reviewDraft: 'The model draft claimed a future appointment [1].',
+          reviewReferences: stagedBase.references,
+        }}
       />,
     );
 
     expect(container.querySelector('[data-indepth-status="needs_review"]')).toBeInTheDocument();
     expect(screen.getByText('Needs review')).toBeInTheDocument();
     expect(screen.getByText('All claims were withheld.')).toBeInTheDocument();
+    expect(screen.getByText('Model draft for review')).toBeInTheDocument();
+    expect(screen.getByText(/not approved clinical output/i)).toBeInTheDocument();
+    expect(screen.getByText(/model draft claimed a future appointment/i)).toBeVisible();
+    expect(
+      screen
+        .getAllByRole('link', { name: '1' })
+        .some((link) => link.getAttribute('href') === `/openmrs/spa/patient/${patientUuid}/chart/Orders`),
+    ).toBe(true);
   });
 
   it('exposes phase="settled" (composer already unlocked) after validation, before in-depth begins', () => {
@@ -878,10 +908,102 @@ describe('AiResponsePanel answer-validation lifecycle', () => {
       />,
     );
 
-    const disclosure = screen.getByText('view original').closest('details');
+    const disclosure = screen.getByText('Original model answer').closest('details');
     expect(disclosure).not.toBeNull();
     expect(disclosure).toHaveTextContent('The original answer.');
-    expect(disclosure).not.toHaveAttribute('open');
+    expect(disclosure).toHaveAttribute('open');
+    expect(disclosure).toHaveTextContent(/changed by the answer check/i);
+  });
+
+  it('links an original answer only through its own references', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        answer="The corrected answer [2]."
+        references={[{ index: 2, resourceType: 'obs', resourceUuid: 'final-ref', date: '2026-02-02' }]}
+        answerValidation={{
+          status: 'edited',
+          label: 'Updated after check',
+          originalAnswer: 'The original answer [1].',
+          originalReferences: [{ index: 1, resourceType: 'order', resourceUuid: 'draft-ref', date: '2026-01-01' }],
+        }}
+      />,
+    );
+
+    const disclosure = screen.getByText('Original model answer').closest('details');
+    const originalLink = disclosure?.querySelector('a');
+    expect(originalLink).toHaveAttribute('href', `/openmrs/spa/patient/${patientUuid}/chart/Orders`);
+    expect(originalLink).not.toHaveAttribute('href', `/openmrs/spa/patient/${patientUuid}/chart/Vitals`);
+  });
+
+  it('shows citation-only edits even when the answer prose is unchanged', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        answer="The documented result is unchanged [1]."
+        references={[{ index: 1, resourceType: 'obs', resourceUuid: 'final-ref', date: '2026-02-02' }]}
+        answerValidation={{
+          status: 'edited',
+          label: 'Updated after check',
+          originalAnswer: 'The documented result is unchanged [1].',
+          originalReferences: [{ index: 1, resourceType: 'order', resourceUuid: 'draft-ref', date: '2026-01-01' }],
+        }}
+      />,
+    );
+
+    const disclosure = screen.getByText('Original model answer').closest('details');
+    expect(disclosure).toHaveAttribute('open');
+    expect(disclosure).toHaveTextContent(/answer or its supporting citations was changed/i);
+    expect(disclosure?.querySelector('a')).toHaveAttribute('href', `/openmrs/spa/patient/${patientUuid}/chart/Orders`);
+  });
+
+  it('keeps pre-check table blocks visible only inside the original-answer review panel', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        answer="The documented weight is shown below [1]."
+        answerValidation={{
+          status: 'needs_review',
+          label: 'Needs review',
+          originalAnswer: 'The documented weight is shown below [1].',
+          originalReferences: [{ index: 1, resourceType: 'obs', resourceUuid: 'draft-ref', date: '2026-01-01' }],
+          originalBlocks: [
+            {
+              kind: 'table',
+              title: 'Pre-check weight table',
+              columns: [{ key: 'weight', label: 'Weight' }],
+              rows: [{ cells: { weight: { text: '6.2 kg', refs: [1] } } }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const disclosure = screen.getByText('Original model answer').closest('details');
+    expect(disclosure).toHaveAttribute('open');
+    expect(disclosure).toHaveTextContent('Pre-check weight table');
+    expect(disclosure).toHaveTextContent('6.2 kg');
+    expect(screen.getAllByText('Pre-check weight table')).toHaveLength(1);
+  });
+
+  it('discloses a changed original answer when the final result still needs review', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        answer="The current flagged answer."
+        answerValidation={{
+          status: 'needs_review',
+          label: 'Needs review',
+          originalAnswer: 'The model answer before checking.',
+        }}
+      />,
+    );
+
+    const disclosure = screen.getByText('Original model answer').closest('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure).toHaveAttribute('open');
+    expect(disclosure).toHaveTextContent('The model answer before checking.');
+    expect(disclosure).toHaveTextContent(/current answer above remains flagged for review/i);
   });
 });
 
@@ -925,7 +1047,7 @@ describe('AiResponsePanel per-section confidence', () => {
     expect(details).not.toHaveAttribute('open'); // collapsed by default
   });
 
-  it('RED (low): shows the caveat note, WITHHOLDS the message behind "show <section>"', () => {
+  it('RED (low): shows both the caveat and the flagged message for manual review', () => {
     render(
       <AiResponsePanel
         {...baseProps}
@@ -935,10 +1057,8 @@ describe('AiResponsePanel per-section confidence', () => {
     const inDepth = screen.getByTestId('section-in-depth');
     expect(inDepth).toHaveTextContent('Low confidence');
     expect(inDepth).toHaveTextContent('supporting context unresolved'); // the caveat note is shown
-    const details = inDepth.querySelector('details');
-    expect(details).toBeTruthy();
-    expect(details).toHaveTextContent(/show in depth/i); // message collapsed behind the reveal
-    expect(details).not.toHaveAttribute('open');
+    expect(inDepth).toHaveTextContent('within range');
+    expect(inDepth.querySelector('details')).toBeNull();
     // the green Answer section is shown with no collapse
     expect(screen.getByTestId('section-answer').querySelector('details')).toBeNull();
   });

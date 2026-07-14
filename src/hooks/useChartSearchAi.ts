@@ -392,6 +392,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           updated[idx] = {
             ...updated[idx],
             answerValidation: interruptAnswerValidation(updated[idx].answerValidation),
+            inDepth: interruptInDepth(updated[idx].inDepth),
             error: errMessage,
             phase: 'error',
           };
@@ -515,6 +516,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           },
           abortController,
           selectedProfileId,
+          messageId,
         );
       } catch (err) {
         abortControllerRef.current = null;

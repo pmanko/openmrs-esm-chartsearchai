@@ -86,13 +86,14 @@ describe('chatPatientChartStream', () => {
       .spyOn(window, 'fetch')
       .mockResolvedValueOnce(mockStreamResponse(['event:done\ndata: {"answer":"ok","references":[]}\n\n']));
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1');
     await flushPromises();
 
     expect(sentBody()).toMatchObject({
       patient: 'uuid-1',
       question: 'q?',
       profile: 'team-med-checked',
+      requestId: 'turn-1',
     });
     expect(sentBody()).not.toHaveProperty('endpointUrl');
     expect(sentBody()).not.toHaveProperty('modelName');
@@ -131,10 +132,10 @@ describe('chatPatientChartStream', () => {
       .mockResolvedValueOnce(
         mockStreamResponse([
           'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checking","label":"Checking answer"},"inDepth":{"status":"pending","answer":""}}\n\n',
-          'event:answer_validation\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checked","label":"Checked"}}\n\n',
+          'event:answer_validation\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"edited","label":"Updated after check","originalAnswer":"Direct answer [1]","originalReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
           'event:indepth_pending\ndata: {"messageId":"m1","inDepth":{"status":"pending","answer":""}}\n\n',
-          'event:indepth_done\ndata: {"inDepth":{"status":"complete","answer":"- background"}}\n\n',
-          'event:done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","inDepth":{"status":"complete","answer":"- background"}}\n\n',
+          'event:indepth_done\ndata: {"inDepth":{"status":"complete","answer":"- background","reviewDraft":"- rejected [1]","reviewReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
+          'event:done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","inDepth":{"status":"complete","answer":"- background","reviewDraft":"- rejected [1]","reviewReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
         ]),
       );
 
@@ -153,7 +154,12 @@ describe('chatPatientChartStream', () => {
     expect(cb.onAnswerValidation).toHaveBeenCalledWith(
       expect.objectContaining({
         answer: 'Direct answer checked',
-        answerValidation: { status: 'checked', label: 'Checked' },
+        answerValidation: {
+          status: 'edited',
+          label: 'Updated after check',
+          originalAnswer: 'Direct answer [1]',
+          originalReferences: [{ index: 1, resourceType: 'Observation' }],
+        },
       }),
     );
     expect(cb.onInDepthPending).toHaveBeenCalledWith({
@@ -161,11 +167,21 @@ describe('chatPatientChartStream', () => {
       inDepth: { status: 'pending', answer: '' },
     });
     expect(cb.onInDepthDone).toHaveBeenCalledWith({
-      inDepth: { status: 'complete', answer: '- background' },
+      inDepth: {
+        status: 'complete',
+        answer: '- background',
+        reviewDraft: '- rejected [1]',
+        reviewReferences: [{ index: 1, resourceType: 'Observation' }],
+      },
     });
     expect(cb.onDone).toHaveBeenCalledWith(
       expect.objectContaining({
-        inDepth: { status: 'complete', answer: '- background' },
+        inDepth: {
+          status: 'complete',
+          answer: '- background',
+          reviewDraft: '- rejected [1]',
+          reviewReferences: [{ index: 1, resourceType: 'Observation' }],
+        },
       }),
     );
     expect(cb.onError).not.toHaveBeenCalled();

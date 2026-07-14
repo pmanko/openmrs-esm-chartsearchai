@@ -105,7 +105,15 @@ export interface AiInDepth {
   status: 'pending' | 'complete' | 'failed' | 'needs_review';
   answer?: string;
   error?: string;
-  validation?: unknown;
+  validation?: {
+    status?: 'checked' | 'edited' | 'needs_review' | 'unavailable';
+    review_status?: 'checked' | 'edited' | 'needs_review' | 'unavailable';
+    [key: string]: unknown;
+  };
+  /** Pre-check model claims rendered for review. Never the shipped answer. */
+  reviewDraft?: string;
+  /** References resolved specifically for reviewDraft; kept separate from final answer evidence. */
+  reviewReferences?: AiReference[];
 }
 
 type AiInDepthEvent = Partial<AiSearchResponse> & { messageId?: string; inDepth: AiInDepth };
@@ -119,6 +127,10 @@ export interface AiAnswerValidation {
   issues?: unknown[];
   completedAt?: string;
   originalAnswer?: string;
+  /** References resolved for originalAnswer; never substitute the final answer's references. */
+  originalReferences?: AiReference[];
+  /** Pre-check table/list blocks. Review-only and never part of the shipped answer blocks. */
+  originalBlocks?: AiBlock[];
 }
 
 export interface AiSearchResponse {
@@ -217,6 +229,7 @@ export function chatPatientChartStream(
   },
   abortController: AbortController | undefined,
   profileId: string,
+  requestId?: string,
 ): void {
   if (!profileId.trim()) {
     throw new Error('A product profile is required');
@@ -224,6 +237,9 @@ export function chatPatientChartStream(
 
   const url = `${window.openmrsBase}${BASE_PATH}/chat/stream`;
   const body: Record<string, string> = { patient: patientUuid, question, profile: profileId };
+  if (requestId?.trim()) {
+    body.requestId = requestId;
+  }
   if (sessionUuid) {
     body.session = sessionUuid;
   }

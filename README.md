@@ -18,6 +18,8 @@ The module receives staged SSE updates from the backend: the short answer arrive
 
 When the selected med-agent-hub profile emits deterministic safety advisories, the panel shows non-blocking **safety-check** chips below the answer and renders knowledge-base citations as distinct, non-navigating reference chips.
 
+Low-confidence output remains visible with its warning so a clinician or evaluator can inspect it. If checks edit an Answer or remove In-Depth claims, the original model output appears in an open, clearly labeled review section. Rejected draft citations use their own source mappings and are never presented as final checked evidence.
+
 ## Backend
 
 This frontend requires the [Chart Search AI backend module](https://github.com/openmrs/openmrs-module-chartsearchai). The Java module authorizes the patient request, persists the conversation, and relays one staged request to med-agent-hub. The hub owns profile composition, context sources, temporal and safety checks, answer review, citation grounding, and In-Depth generation.

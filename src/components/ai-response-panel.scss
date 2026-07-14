@@ -8,10 +8,7 @@
   gap: layout.$spacing-04;
 }
 
-// Per-section validator confidence — parity with the validate dashboard's confSection
-// inversion: red shows the caveat + collapses the message; yellow shows the message +
-// collapses the note; green shows the message. Chip/caveat colors mirror the dashboard,
-// adapted for the light chat surface.
+// Per-section validator confidence. Flags precede the response, which remains visible for review.
 .csec {
   margin-top: layout.$spacing-04;
 }
@@ -99,6 +96,44 @@
   color: colors.$blue-60;
   font-size: 0.6875rem;
   padding: layout.$spacing-02 0;
+}
+
+.reviewDraft {
+  margin-top: layout.$spacing-04;
+  border-left: 3px solid colors.$red-60;
+  padding-left: layout.$spacing-04;
+
+  > summary {
+    cursor: pointer;
+    color: colors.$gray-80;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: layout.$spacing-02 0;
+  }
+}
+
+.reviewDraftNotice {
+  font-size: 0.75rem;
+  padding: layout.$spacing-03;
+  margin: layout.$spacing-02 0;
+}
+
+.reviewDraftEdited {
+  border-left-color: colors.$yellow-30;
+}
+
+.reviewDraftNoticeRejected {
+  background: #fff1f1;
+  color: #a2191f;
+}
+
+.reviewDraftNoticeEdited {
+  background: #fcf4d6;
+  color: #684e00;
+}
+
+.reviewDraftBody {
+  margin-top: layout.$spacing-03;
 }
 
 .ans {

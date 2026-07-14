@@ -129,6 +129,7 @@ describe('useChartSearchAi', () => {
       }),
       expect.any(AbortController),
       'single-e4b-checked',
+      expect.any(String),
     );
   });
 
@@ -197,6 +198,7 @@ describe('useChartSearchAi', () => {
       expect.any(Object),
       expect.any(AbortController),
       'single-e4b-checked',
+      expect.any(String),
     );
   });
 
@@ -540,6 +542,7 @@ describe('useChartSearchAi', () => {
       expect.any(Object),
       expect.any(AbortController),
       'team-med-checked',
+      expect.any(String),
     );
   });
 
@@ -635,6 +638,16 @@ describe('useChartSearchAi', () => {
       answer: '',
       error: 'All claims were withheld.',
       validation: { mode: 'enforce', status: 'needs_review' },
+      reviewDraft: '- Rejected model claim [1].',
+      reviewReferences: [
+        {
+          index: 1,
+          resourceType: 'Observation',
+          resourceUuid: 'obs-1',
+          date: '2026-07-10',
+          resolutionStatus: 'resolved' as const,
+        },
+      ],
     };
     act(() => {
       cb.onAnswerDone({ answer: 'A.', references: [], messageId: 'm-1' });
@@ -689,7 +702,13 @@ describe('useChartSearchAi', () => {
     act(() => callbacks.onError('Stream failed'));
 
     expect(result.current.messages[0].phase).toBe('error');
+    expect(result.current.messages[0].answer).toBe('Partial answer.');
     expect(result.current.messages[0].answerValidation?.status).toBe('unavailable');
+    expect(result.current.messages[0].inDepth).toEqual({
+      status: 'failed',
+      answer: '',
+      error: 'In-Depth was interrupted.',
+    });
   });
 
   // Interactive-first: the answer settles (answer + validation) BEFORE the terminal `done`, while

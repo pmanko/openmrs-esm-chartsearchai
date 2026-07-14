@@ -258,6 +258,14 @@ const validationLabelFallback: Record<string, string> = {
   unavailable: 'Check unavailable',
 };
 
+const inDepthValidation = (validation: AiInDepth['validation']): AiAnswerValidation | undefined => {
+  const status = validation?.status;
+  if (!status || !validationLabelFallback[status]) {
+    return undefined;
+  }
+  return { status, label: validationLabelFallback[status] };
+};
+
 const AnswerValidationBadge: React.FC<{ validation: AiAnswerValidation }> = ({ validation }) => {
   const className = styles[`answerValidation_${validation.status}`] ?? styles.answerValidation_unavailable;
   return (
@@ -267,13 +275,7 @@ const AnswerValidationBadge: React.FC<{ validation: AiAnswerValidation }> = ({ v
   );
 };
 
-/**
- * One answer section (Answer / In-Depth) with the validate dashboard's confidence inversion
- * (scripts/validate-dashboard.py confSection):
- *   red    → show the validator note as a caveat, COLLAPSE the message behind "show <section>"
- *   yellow → show the message, collapse the note behind "show review note"
- *   green  → show the message, no caveat
- */
+/** One answer section. A low-confidence flag adds a prominent warning but never hides reviewable output. */
 const ConfidenceSection: React.FC<{
   label: string;
   body: string;
@@ -282,12 +284,21 @@ const ConfidenceSection: React.FC<{
   references: AiReference[];
   patientUuid: string;
 }> = ({ label, body, section, answerValidation, references, patientUuid }) => {
+  const { t } = useTranslation();
   if (!body) {
     return null;
   }
   const level = section?.level ?? 'green';
   const note = section?.note ?? '';
   const rendered = <MarkdownAnswer answer={body} references={references} patientUuid={patientUuid} />;
+  const originalAnswer = answerValidation?.originalAnswer?.trim();
+  const originalReferences = answerValidation?.originalReferences ?? [];
+  const originalBlocks = answerValidation?.originalBlocks ?? [];
+  const hasOriginalReferenceArtifact = answerValidation?.originalReferences !== undefined;
+  const showOriginalAnswer = Boolean(
+    originalAnswer && (originalAnswer !== body.trim() || originalBlocks.length > 0 || hasOriginalReferenceArtifact),
+  );
+  const originalWasEdited = answerValidation?.status === 'edited';
   return (
     <div className={styles.csec} data-testid={`section-${label.replace(/\s+/g, '-').toLowerCase()}`}>
       <div className={styles.ctitle}>
@@ -297,10 +308,7 @@ const ConfidenceSection: React.FC<{
       {level === 'red' ? (
         <>
           {note && <div className={`${styles.caveat} ${styles.caveatRed}`}>{note}</div>}
-          <details className={styles.collapse}>
-            <summary>show {label.toLowerCase()}</summary>
-            <div className={styles.ans}>{rendered}</div>
-          </details>
+          <div className={styles.ans}>{rendered}</div>
         </>
       ) : level === 'yellow' ? (
         <>
@@ -315,19 +323,65 @@ const ConfidenceSection: React.FC<{
       ) : (
         <div className={styles.ans}>{rendered}</div>
       )}
-      {answerValidation?.status === 'edited' && answerValidation.originalAnswer && (
-        <details className={styles.collapse}>
-          <summary>view original</summary>
-          <div className={`${styles.caveat} ${styles.caveatYellow}`}>
-            <MarkdownAnswer
-              answer={answerValidation.originalAnswer}
-              references={references}
-              patientUuid={patientUuid}
-            />
+      {showOriginalAnswer && (
+        <details open className={`${styles.reviewDraft} ${originalWasEdited ? styles.reviewDraftEdited : ''}`.trim()}>
+          <summary>{t('originalModelAnswer', 'Original model answer')}</summary>
+          <div
+            className={`${styles.reviewDraftNotice} ${
+              originalWasEdited ? styles.reviewDraftNoticeEdited : styles.reviewDraftNoticeRejected
+            }`}
+          >
+            {originalWasEdited
+              ? t(
+                  'originalModelAnswerNotice',
+                  'This answer or its supporting citations was changed by the answer check. The checked answer above is the current result.',
+                )
+              : t(
+                  'originalModelAnswerNeedsReviewNotice',
+                  'This was the model output before checking. The current answer above remains flagged for review.',
+                )}
+          </div>
+          <div className={styles.reviewDraftBody}>
+            <MarkdownAnswer answer={originalAnswer ?? ''} references={originalReferences} patientUuid={patientUuid} />
+            {originalBlocks.map((block, idx) =>
+              block.kind === 'table' ? (
+                <AiTableBlockView
+                  key={`original-block-${idx}`}
+                  block={block}
+                  references={originalReferences}
+                  patientUuid={patientUuid}
+                />
+              ) : null,
+            )}
           </div>
         </details>
       )}
     </div>
+  );
+};
+
+const InDepthReviewDraft: React.FC<{
+  draft?: string;
+  references?: AiReference[];
+  patientUuid: string;
+}> = ({ draft, references, patientUuid }) => {
+  const { t } = useTranslation();
+  if (!draft?.trim()) {
+    return null;
+  }
+  return (
+    <details open className={styles.reviewDraft}>
+      <summary>{t('modelDraftForReview', 'Model draft for review')}</summary>
+      <div className={`${styles.reviewDraftNotice} ${styles.reviewDraftNoticeRejected}`}>
+        {t(
+          'modelDraftForReviewNotice',
+          "This is the model's pre-check output. It was changed or withheld and is not approved clinical output.",
+        )}
+      </div>
+      <div className={styles.reviewDraftBody}>
+        <MarkdownAnswer answer={draft} references={references ?? []} patientUuid={patientUuid} />
+      </div>
+    </details>
   );
 };
 const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
@@ -445,16 +499,29 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                           )
                         : t('inDepthFailed', 'In-Depth could not be completed.'))}
                   </div>
+                  <InDepthReviewDraft
+                    draft={inDepth.reviewDraft}
+                    references={inDepth.reviewReferences}
+                    patientUuid={patientUuid}
+                  />
                 </div>
               )}
               {inDepth.status === 'complete' && inDepth.answer && (
-                <ConfidenceSection
-                  label="In Depth"
-                  body={inDepth.answer}
-                  section={confidence?.in_depth}
-                  references={references}
-                  patientUuid={patientUuid}
-                />
+                <>
+                  <ConfidenceSection
+                    label="In Depth"
+                    body={inDepth.answer}
+                    section={confidence?.in_depth}
+                    answerValidation={inDepthValidation(inDepth.validation)}
+                    references={references}
+                    patientUuid={patientUuid}
+                  />
+                  <InDepthReviewDraft
+                    draft={inDepth.reviewDraft}
+                    references={inDepth.reviewReferences}
+                    patientUuid={patientUuid}
+                  />
+                </>
               )}
             </div>
           )}
