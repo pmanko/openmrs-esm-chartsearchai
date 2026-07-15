@@ -649,12 +649,14 @@ describe('useChartSearchAi', () => {
         },
       ],
     };
-    act(() => {
-      cb.onAnswerDone({ answer: 'A.', references: [], messageId: 'm-1' });
-      cb.onInDepthPending({ inDepth: { status: 'pending', answer: '' } });
-      cb.onInDepthError({ inDepth: withheld });
-    });
+    act(() => cb.onAnswerDone({ answer: 'A.', references: [], messageId: 'm-1' }));
+    act(() => cb.onInDepthPending({ inDepth: { status: 'pending', answer: '' } }));
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].phase).toBe('in-depth');
+
+    act(() => cb.onInDepthError({ inDepth: withheld }));
     expect(result.current.messages[0].inDepth).toEqual(withheld);
+    expect(result.current.messages).toHaveLength(1);
 
     act(() => cb.onDone({ answer: 'A.', references: [], inDepth: withheld }));
     expect(result.current.messages[0].inDepth).toEqual(withheld);
