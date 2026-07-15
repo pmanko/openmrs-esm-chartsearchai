@@ -651,6 +651,7 @@ describe('useChartSearchAi', () => {
     };
     act(() => {
       cb.onAnswerDone({ answer: 'A.', references: [], messageId: 'm-1' });
+      cb.onInDepthPending({ inDepth: { status: 'pending', answer: '' } });
       cb.onInDepthError({ inDepth: withheld });
     });
     expect(result.current.messages[0].inDepth).toEqual(withheld);
