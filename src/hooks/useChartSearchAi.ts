@@ -35,9 +35,9 @@ export interface ChatMessage {
    * per-response tag. Undefined for older rows or system notices.
    */
   resolvedModel?: string;
-  /** Per-section validator confidence (green/yellow/red + note); validated hub tiers only. */
+  /** Per-section check confidence (green/yellow/red + note); checked hub profiles only. */
   confidence?: AiConfidence;
-  /** Answer check lifecycle for staged validated responses. */
+  /** Answer check lifecycle for staged checked responses. */
   answerValidation?: AiAnswerValidation;
   /** Product-profile In-Depth state attached to this assistant turn. */
   inDepth?: AiInDepth;

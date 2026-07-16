@@ -31,7 +31,7 @@ interface AiResponsePanelProps {
   patientUuid: string;
   /** Hub product profile that produced this answer; shown as a subtle faded tag. */
   resolvedModel?: string;
-  /** Per-section validator confidence (validated hub tiers); rendered as green/yellow/red chips. */
+  /** Per-section check confidence (checked hub profiles); rendered as green/yellow/red chips. */
   confidence?: AiConfidence;
   /** Staged answer check lifecycle; rendered as the primary Answer badge when present. */
   answerValidation?: AiAnswerValidation;

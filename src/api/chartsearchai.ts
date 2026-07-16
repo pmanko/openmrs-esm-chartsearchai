@@ -147,9 +147,9 @@ export interface AiSearchResponse {
   messageId?: string;
   /** Product profile id that produced this answer. */
   resolvedModel?: string;
-  /** Per-section validator confidence (green/yellow/red + note) from the validated hub tiers. */
+  /** Per-section check confidence (green/yellow/red + note) from checked hub profiles. */
   confidence?: AiConfidence;
-  /** Clinician-facing answer check lifecycle for staged validated responses. */
+  /** Clinician-facing answer check lifecycle for staged checked responses. */
   answerValidation?: AiAnswerValidation;
   /** In-Depth analysis attached after the direct answer settles. */
   inDepth?: AiInDepth;
