@@ -370,12 +370,12 @@ const InDepthReviewDraft: React.FC<{
     return null;
   }
   return (
-    <details open className={styles.reviewDraft}>
-      <summary>{t('modelDraftForReview', 'Model draft for review')}</summary>
+    <details className={styles.reviewDraft}>
+      <summary>{t('removedInDepthClaims', 'Removed In-Depth claims')}</summary>
       <div className={`${styles.reviewDraftNotice} ${styles.reviewDraftNoticeRejected}`}>
         {t(
-          'modelDraftForReviewNotice',
-          "This is the model's pre-check output. It was changed or withheld and is not approved clinical output.",
+          'removedInDepthClaimsNotice',
+          'These model-generated claims were removed or withheld by checks. They are shown only for manual review and are not part of the final clinical response.',
         )}
       </div>
       <div className={styles.reviewDraftBody}>

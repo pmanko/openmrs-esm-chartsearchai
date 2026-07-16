@@ -109,6 +109,11 @@
     font-size: 0.75rem;
     font-weight: 600;
     padding: layout.$spacing-02 0;
+
+    &:focus-visible {
+      outline: 2px solid colors.$blue-60;
+      outline-offset: 2px;
+    }
   }
 }
 

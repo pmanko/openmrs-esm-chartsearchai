@@ -855,8 +855,12 @@ describe('AiResponsePanel staged in-depth status', () => {
     expect(container.querySelector('[data-indepth-status="needs_review"]')).toBeInTheDocument();
     expect(screen.getByText('Needs review')).toBeInTheDocument();
     expect(screen.getByText('All claims were withheld.')).toBeInTheDocument();
-    expect(screen.getByText('Model draft for review')).toBeInTheDocument();
-    expect(screen.getByText(/not approved clinical output/i)).toBeInTheDocument();
+    const removedClaimsSummary = screen.getByText('Removed In-Depth claims');
+    const removedClaims = removedClaimsSummary.closest('details');
+    expect(removedClaims).not.toHaveAttribute('open');
+    expect(screen.getByText(/not part of the final clinical response/i)).toBeInTheDocument();
+    fireEvent.click(removedClaimsSummary);
+    expect(removedClaims).toHaveAttribute('open');
     expect(screen.getByText(/model draft claimed a future appointment/i)).toBeVisible();
     expect(
       screen
