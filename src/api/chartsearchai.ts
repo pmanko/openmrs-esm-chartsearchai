@@ -343,18 +343,38 @@ export function chatPatientChartStream(
           } catch {
             callbacks.onError('Failed to parse in-depth error response');
           }
-        } else if (eventType === 'done') {
+        } else if (eventType === 'turn_started') {
+          // Lifecycle marker carrying {session, messageId, provider}. The
+          // canonical stream does not set the session response header, so this
+          // is the earliest point the client can pin the conversation uuid.
+          try {
+            const raw = JSON.parse(data) as { session?: string };
+            if (raw.session) {
+              callbacks.onSession(raw.session);
+            }
+          } catch {
+            // A malformed marker is not fatal; the session also arrives on
+            // answer_done and turn_done.
+          }
+        } else if (eventType === 'turn_done') {
           streamFinalized = true;
           try {
-            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
-            // The backend sends the resolved model as `model`; surface it as resolvedModel.
-            callbacks.onDone({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+            // Lifecycle marker: the answer itself arrived on answer_done and is
+            // preserved by the consumer's envelope merge; this only finalizes
+            // the turn and carries {session, messageId, provider}.
+            const raw = JSON.parse(data) as AiSearchResponse;
+            callbacks.onDone(raw);
           } catch {
             callbacks.onError('Failed to parse final response');
           }
-        } else if (eventType === 'error') {
+        } else if (eventType === 'turn_error') {
           streamFinalized = true;
-          callbacks.onError(data);
+          try {
+            const raw = JSON.parse(data) as { problemCode?: string };
+            callbacks.onError(raw.problemCode ?? data);
+          } catch {
+            callbacks.onError(data);
+          }
         }
         eventType = '';
         dataLines = [];
