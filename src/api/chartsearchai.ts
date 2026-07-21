@@ -497,3 +497,36 @@ export async function fetchProfiles(abortController?: AbortController): Promise<
   });
   return response.data as HubProfileListResponse;
 }
+
+/**
+ * A clinical-answer provider (bundled local inference or the med-agent-hub
+ * relay) as advertised by ChartSearchAI's provider registry.
+ */
+export interface ClinicalProviderDescriptor {
+  id: string;
+  label: string;
+  enabled: boolean;
+  ready: boolean;
+  default: boolean;
+  modes: string[];
+  capabilities: string[];
+  unavailableReason: string | null;
+}
+
+export interface ProviderListResponse {
+  defaultProvider: string;
+  /** True only when more than one provider is configured — drives picker visibility. */
+  pickerVisible: boolean;
+  providers: ClinicalProviderDescriptor[];
+}
+
+/**
+ * List the clinical-answer providers ChartSearchAI has configured. Bundled is
+ * the fresh-install default; the hub appears only when it is configured.
+ */
+export async function fetchProviders(abortController?: AbortController): Promise<ProviderListResponse> {
+  const response = await openmrsFetch(`${BASE_PATH}/providers`, {
+    signal: abortController?.signal,
+  });
+  return response.data as ProviderListResponse;
+}

@@ -494,6 +494,9 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       };
 
       const sessionUuid = sessionUuidByPatient[patientUuid] ?? null;
+      // Null means "no explicit selection" — the backend applies its configured
+      // default provider, never a silent cross-provider fallback.
+      const selectedProviderId = chatSessionStore.getState().selectedProviderId ?? undefined;
 
       try {
         // Multi-turn streaming: chat history is reconstructed server-side
@@ -517,6 +520,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           abortController,
           selectedProfileId,
           messageId,
+          selectedProviderId,
         );
       } catch (err) {
         abortControllerRef.current = null;

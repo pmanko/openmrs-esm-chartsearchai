@@ -14,6 +14,12 @@ export interface ChatSessionState {
   selectedProfileId: string | null;
   /** Whether product-profile discovery can safely authorize a chat request. */
   profileDiscoveryStatus: 'loading' | 'ready' | 'unavailable';
+  /**
+   * Clinical-answer provider selected for this browser session. Null means the
+   * backend applies its configured default (bundled on a fresh install); it is
+   * never a silent cross-provider fallback.
+   */
+  selectedProviderId: string | null;
 }
 
 export const chatSessionStore = createGlobalStore<ChatSessionState>('chartsearchai-chat-session', {
@@ -21,6 +27,7 @@ export const chatSessionStore = createGlobalStore<ChatSessionState>('chartsearch
   sessionUuidByPatient: {},
   selectedProfileId: null,
   profileDiscoveryStatus: 'loading',
+  selectedProviderId: null,
 });
 
 export function setupChatSessionLogoutCleanup(): () => void {
@@ -35,6 +42,7 @@ export function setupChatSessionLogoutCleanup(): () => void {
         sessionUuidByPatient: {},
         selectedProfileId: null,
         profileDiscoveryStatus: 'loading',
+        selectedProviderId: null,
       });
       previousUserUuid = currentUserUuid;
     }

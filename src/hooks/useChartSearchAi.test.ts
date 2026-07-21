@@ -21,6 +21,7 @@ beforeEach(() => {
     sessionUuidByPatient: {},
     selectedProfileId: 'single-e4b-checked',
     profileDiscoveryStatus: 'ready',
+    selectedProviderId: null,
   });
   // Default: empty hydration so tests opt-in to populated history.
   mockFetchHistory.mockResolvedValue({ session: 'srv-session-default', messages: [] });
@@ -130,6 +131,7 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       'single-e4b-checked',
       expect.any(String),
+      undefined,
     );
   });
 
@@ -199,6 +201,7 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       'single-e4b-checked',
       expect.any(String),
+      undefined,
     );
   });
 
@@ -543,6 +546,29 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       'team-med-checked',
       expect.any(String),
+      undefined,
+    );
+  });
+
+  it('passes the selected provider as the per-request override', async () => {
+    mockChatStream.mockImplementation(() => {});
+    chatSessionStore.setState({ selectedProviderId: 'hub' });
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What meds?');
+    });
+
+    expect(mockChatStream).toHaveBeenLastCalledWith(
+      'patient-uuid',
+      expect.anything(),
+      'What meds?',
+      expect.any(Object),
+      expect.any(AbortController),
+      'single-e4b-checked',
+      expect.any(String),
+      'hub',
     );
   });
 
