@@ -9,6 +9,7 @@ import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { type ChartSearchAiConfig } from '../config-schema';
 import AiResponsePanel from './ai-response-panel.component';
 import ModelPicker from './model-picker.component';
+import ProviderPicker from './provider-picker.component';
 import styles from './ai-chat-content.scss';
 
 interface AiChatContentProps {
@@ -173,6 +174,13 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
     inputRef.current?.focus();
   }, [patientUuid, startNewChatSession]);
 
+  // A provider switch starts a fresh conversation: the backend attributes each
+  // conversation to a single provider and closes it on switch.
+  const handleProviderSwitched = useCallback(() => {
+    if (!patientUuid) return;
+    startNewChatSession(patientUuid);
+  }, [patientUuid, startNewChatSession]);
+
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
@@ -280,6 +288,7 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
       )}
 
       <div className={styles.modelPickerRow}>
+        <ProviderPicker onSwitched={handleProviderSwitched} />
         <ModelPicker />
       </div>
 

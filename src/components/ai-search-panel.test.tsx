@@ -51,10 +51,11 @@ vi.mock('../hooks/useSpeechRecognition', () => ({
 vi.mock('../api/chartsearchai', async (importActual) => ({
   ...(await importActual<typeof import('../api/chartsearchai')>()),
   submitFeedback: vi.fn().mockResolvedValue(undefined),
-  // ModelPicker (mounted inside AiChatContent) imports fetchProfiles. Reject it
-  // so the picker hides itself silently — keeps these tests focused on the panel
-  // flow, not the picker.
+  // ModelPicker/ProviderPicker (mounted inside AiChatContent) import fetchProfiles
+  // and fetchProviders. Reject them so the pickers hide themselves silently —
+  // keeps these tests focused on the panel flow, not the pickers.
   fetchProfiles: vi.fn().mockRejectedValue(new Error('not mocked')),
+  fetchProviders: vi.fn().mockRejectedValue(new Error('not mocked')),
 }));
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {

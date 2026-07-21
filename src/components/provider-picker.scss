@@ -1,0 +1,16 @@
+@use '@carbon/layout';
+
+// The popover itself is a Carbon Menu (portaled to document.body). This file
+// only lays out the trigger row.
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: layout.$spacing-02;
+}
+
+.triggerRow {
+  display: inline-flex;
+  align-items: center;
+  gap: layout.$spacing-02;
+}
