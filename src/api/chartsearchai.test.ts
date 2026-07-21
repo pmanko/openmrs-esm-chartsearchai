@@ -136,12 +136,14 @@ describe('chatPatientChartStream', () => {
 
   it("maps the answer_done event's `model` field onto resolvedModel", async () => {
     const cb = makeCallbacks();
-    fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce(
-      mockStreamResponse([
-        'event:answer_done\ndata: {"answer":"ok","references":[],"model":"med-agent-team"}\n\n',
-        'event:turn_done\ndata: {"session":"sess-1"}\n\n',
-      ]),
-    );
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse([
+          'event:answer_done\ndata: {"answer":"ok","references":[],"model":"med-agent-team"}\n\n',
+          'event:turn_done\ndata: {"session":"sess-1"}\n\n',
+        ]),
+      );
 
     chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked');
     await flushPromises();
@@ -222,12 +224,14 @@ describe('chatPatientChartStream', () => {
 
   it('finalizes on turn_done and preserves the staged answer', async () => {
     const cb = makeCallbacks();
-    fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce(
-      mockStreamResponse([
-        'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1"}\n\n',
-        'event:turn_done\ndata: {"session":"sess-1","messageId":"m1","provider":"hub"}\n\n',
-      ]),
-    );
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse([
+          'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1"}\n\n',
+          'event:turn_done\ndata: {"session":"sess-1","messageId":"m1","provider":"hub"}\n\n',
+        ]),
+      );
 
     chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked');
     await flushPromises();
@@ -252,13 +256,15 @@ describe('chatPatientChartStream', () => {
 
   it('captures the conversation session from turn_started', async () => {
     const cb = makeCallbacks();
-    fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce(
-      mockStreamResponse([
-        'event:turn_started\ndata: {"session":"sess-42","messageId":"m1","provider":"hub"}\n\n',
-        'event:answer_done\ndata: {"answer":"A","references":[],"messageId":"m1"}\n\n',
-        'event:turn_done\ndata: {"session":"sess-42","messageId":"m1","provider":"hub"}\n\n',
-      ]),
-    );
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse([
+          'event:turn_started\ndata: {"session":"sess-42","messageId":"m1","provider":"hub"}\n\n',
+          'event:answer_done\ndata: {"answer":"A","references":[],"messageId":"m1"}\n\n',
+          'event:turn_done\ndata: {"session":"sess-42","messageId":"m1","provider":"hub"}\n\n',
+        ]),
+      );
 
     chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked');
     await flushPromises();
