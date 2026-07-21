@@ -100,6 +100,30 @@ describe('chatPatientChartStream', () => {
     expect(sentBody()).not.toHaveProperty('staged');
   });
 
+  it('sends the selected provider in the request body', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(mockStreamResponse(['event:turn_done\ndata: {"session":"s"}\n\n']));
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1', 'hub');
+    await flushPromises();
+
+    expect(sentBody()).toMatchObject({ provider: 'hub' });
+  });
+
+  it('omits provider when none is selected so the backend applies its default', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(mockStreamResponse(['event:turn_done\ndata: {"session":"s"}\n\n']));
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1');
+    await flushPromises();
+
+    expect(sentBody()).not.toHaveProperty('provider');
+  });
+
   it('rejects an empty profile instead of relying on a relay fallback', () => {
     const cb = makeCallbacks();
     fetchSpy = vi.spyOn(window, 'fetch');

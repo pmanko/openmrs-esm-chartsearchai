@@ -230,6 +230,7 @@ export function chatPatientChartStream(
   abortController: AbortController | undefined,
   profileId: string,
   requestId?: string,
+  providerId?: string,
 ): void {
   if (!profileId.trim()) {
     throw new Error('A product profile is required');
@@ -239,6 +240,11 @@ export function chatPatientChartStream(
   const body: Record<string, string> = { patient: patientUuid, question, profile: profileId };
   if (requestId?.trim()) {
     body.requestId = requestId;
+  }
+  // Provider is optional: when omitted the backend applies its configured
+  // default (bundled on a fresh install), never a silent cross-provider fallback.
+  if (providerId?.trim()) {
+    body.provider = providerId;
   }
   if (sessionUuid) {
     body.session = sessionUuid;
