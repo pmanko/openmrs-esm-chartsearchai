@@ -205,6 +205,43 @@ describe('useChartSearchAi', () => {
     );
   });
 
+  it('does not let a late-arriving hydration response clobber a session a turn already corrected', async () => {
+    // Real race: the mount-time history GET (fast, no LLM) can still resolve AFTER the first
+    // real turn's own onSession callback has already set the correct session — e.g. right after
+    // a provider switch, the hydration response reflects the OLD provider's conversation while
+    // the in-flight turn already opened and was told about a NEW one for the new provider. If
+    // hydration is allowed to overwrite unconditionally, the next submit sends the stale session,
+    // and the backend — seeing a provider/mode mismatch — silently opens yet another new
+    // conversation instead of continuing the one the user is actually mid-turn on.
+    let resolveHydration: (value: { session: string; messages: never[] }) => void;
+    mockFetchHistory.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveHydration = resolve;
+      }),
+    );
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q1');
+    });
+    const callbacks1 = mockChatStream.mock.calls[0][3];
+    act(() => {
+      callbacks1.onSession('srv-session-from-turn-1');
+      callbacks1.onDone({ answer: 'A1', references: [], session: 'srv-session-from-turn-1', messageId: 'm-1' });
+    });
+    expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-from-turn-1');
+
+    // The hydration fetch (from mount, before Q1 was even sent) finally resolves — with a STALE
+    // session that has nothing to do with the turn that already completed.
+    await act(async () => {
+      resolveHydration({ session: 'srv-session-stale-hydration', messages: [] });
+    });
+
+    expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-from-turn-1');
+  });
+
   it('sets the answer whole on answer_done (the hub delivers a complete answer, not tokens)', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));

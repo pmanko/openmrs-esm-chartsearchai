@@ -195,9 +195,18 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       return;
     }
     const controller = new AbortController();
+    const sessionBeforeFetch = chatSessionStore.getState().sessionUuidByPatient[patientUuid];
     fetchChatHistory(patientUuid, controller)
       .then((response) => {
         if (!isMountedRef.current || controller.signal.aborted) return;
+        // This is a mount-time snapshot fetch, not a live subscription — a real turn's own
+        // onSession can complete and correct the session while this fetch is still in flight
+        // (it started from a stale hydrated session, e.g. right after a provider switch). Only
+        // apply the response if nothing has updated the session since this fetch began; a real
+        // turn's result always wins over a late, now-outdated snapshot.
+        if (chatSessionStore.getState().sessionUuidByPatient[patientUuid] !== sessionBeforeFetch) {
+          return;
+        }
         setSessionUuid(patientUuid, response.session ?? null);
         const hydrated = hydrateMessages(response.messages ?? []);
         if (hydrated.length > 0) {
