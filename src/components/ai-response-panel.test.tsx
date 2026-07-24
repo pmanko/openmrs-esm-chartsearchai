@@ -620,6 +620,81 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.queryByText('Safety checks:')).not.toBeInTheDocument();
   });
 
+  it('stays silent for a checked status with nothing flagged (the clean, good case)', () => {
+    render(
+      <AiResponsePanel
+        answer="The blood pressure is 120/80 [1]."
+        references={[]}
+        safetyWarnings={[]}
+        safetyStatus="checked"
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.queryByText('Safety checks:')).not.toBeInTheDocument();
+  });
+
+  it('surfaces an unavailable safety status even with no warnings, so it is never mistaken for checked-clean', () => {
+    render(
+      <AiResponsePanel
+        answer="Ibuprofen could be considered [1]."
+        references={[]}
+        safetyWarnings={[]}
+        safetyStatus="unavailable"
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Safety check unavailable')).toBeInTheDocument();
+  });
+
+  it('surfaces a limited safety status even with no warnings', () => {
+    render(
+      <AiResponsePanel
+        answer="Ibuprofen could be considered [1]."
+        references={[]}
+        safetyWarnings={[]}
+        safetyStatus="limited"
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Limited safety check')).toBeInTheDocument();
+  });
+
+  it('surfaces both the status tag and the individual warnings together', () => {
+    render(
+      <AiResponsePanel
+        answer="Ibuprofen 600 mg every 6 hours [6]."
+        references={[]}
+        safetyWarnings={[
+          { type: 'overdose', drug: 'Ibuprofen', detail: 'stated dose ~2400 mg/day exceeds the 1200 mg/day maximum' },
+        ]}
+        safetyStatus="checked"
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Dose')).toBeInTheDocument();
+    expect(screen.queryByText('Safety check unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText('Limited safety check')).not.toBeInTheDocument();
+  });
+
   it('surfaces an unrecognised warning type with the fallback label (never drops a warning)', () => {
     render(
       <AiResponsePanel

@@ -68,6 +68,14 @@ export interface AiSafetyWarning {
   detail: string;
 }
 
+/**
+ * Honest drug-safety check state: `checked` = the full check ran against real reference data and
+ * a real patient context; `limited` = only a subset of checks ran; `unavailable` = the check could
+ * not run at all (no patient context, or the policy has drug safety disabled). An empty
+ * `safetyWarnings` list must never be read as `checked` on its own.
+ */
+export type AiSafetyStatus = 'checked' | 'limited' | 'unavailable';
+
 export interface AiCell {
   text: string;
   refs?: number[];
@@ -138,6 +146,8 @@ export interface AiSearchResponse {
   references: AiReference[];
   /** Deterministic safety advisories emitted by the selected hub profile. */
   safetyWarnings?: AiSafetyWarning[];
+  /** checked/limited/unavailable — present alongside safetyWarnings, even when it's empty. */
+  safetyStatus?: AiSafetyStatus;
   blocks?: AiBlock[];
   /** Numeric OpenMRS audit row id used only for feedback. */
   auditLogId?: number;
@@ -164,6 +174,8 @@ export interface ChatHistoryMessage {
   blocks?: AiBlock[];
   /** Deterministic safety advisories emitted by the selected hub profile. */
   safetyWarnings?: AiSafetyWarning[];
+  /** checked/limited/unavailable — present alongside safetyWarnings, even when it's empty. */
+  safetyStatus?: AiSafetyStatus;
   confidence?: AiConfidence;
   answerValidation?: AiAnswerValidation;
   inDepth?: AiInDepth;

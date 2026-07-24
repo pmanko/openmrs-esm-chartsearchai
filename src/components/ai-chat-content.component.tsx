@@ -251,6 +251,7 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
                 answer={msg.answer}
                 references={msg.references}
                 safetyWarnings={msg.safetyWarnings}
+                safetyStatus={msg.safetyStatus}
                 blocks={msg.blocks}
                 confidence={msg.confidence}
                 answerValidation={msg.answerValidation}

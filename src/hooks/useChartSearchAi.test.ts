@@ -375,6 +375,28 @@ describe('useChartSearchAi', () => {
     ]);
   });
 
+  it('hydrates safetyStatus from chat history rows even when there are no warnings', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-status',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'What medications is the patient on?', createdAt: 1 },
+        {
+          messageId: 'a-1',
+          role: 'assistant',
+          content: 'Lisinopril 10 mg [1].',
+          safetyWarnings: [],
+          safetyStatus: 'unavailable',
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].safetyStatus).toBe('unavailable');
+  });
+
   it('sets error on streaming onError', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));

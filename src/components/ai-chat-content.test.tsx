@@ -19,16 +19,19 @@ vi.mock('./ai-response-panel.component', () => ({
     answer,
     error,
     safetyWarnings,
+    safetyStatus,
   }: {
     answer: string;
     error: string | null;
     safetyWarnings?: Array<{ type: string; drug: string; detail: string }>;
+    safetyStatus?: string;
   }) => (
     <div data-testid="ai-response">
       {error ?? answer}
       {safetyWarnings && safetyWarnings.length > 0 ? (
         <span data-testid="ai-response-safety">{safetyWarnings.map((w) => `${w.type}:${w.drug}`).join('|')}</span>
       ) : null}
+      {safetyStatus ? <span data-testid="ai-response-safety-status">{safetyStatus}</span> : null}
     </div>
   ),
 }));
@@ -296,6 +299,35 @@ describe('AiChatContent', () => {
       render(<AiChatContent mode="workspace" patientUuid="p1" />);
 
       expect(screen.getByTestId('ai-response-safety')).toHaveTextContent('contraindication:Ibuprofen');
+    });
+
+    it('forwards a message safetyStatus to the response panel even with no warnings', () => {
+      // Regression guard for the wiring at ai-chat-content.component.tsx (safetyStatus={msg.safetyStatus}):
+      // unavailable/limited must reach the panel so a check that could not run is never silently
+      // indistinguishable from one that ran clean.
+      mockUseChartSearchAi.mockReturnValue({
+        messages: [
+          {
+            id: 'm-status',
+            question: 'What medications is the patient on?',
+            answer: 'Lisinopril 10 mg [1].',
+            references: [],
+            safetyWarnings: [],
+            safetyStatus: 'unavailable',
+            auditLogId: 42,
+            phase: 'complete',
+            error: null,
+          },
+        ],
+        isAwaitingAnswer: false,
+        submitQuestion: mockSubmitQuestion,
+        stopCurrent: mockStopCurrent,
+        clearMessages: vi.fn(),
+      });
+
+      render(<AiChatContent mode="workspace" patientUuid="p1" />);
+
+      expect(screen.getByTestId('ai-response-safety-status')).toHaveTextContent('unavailable');
     });
   });
   describe('header controls (new chat / maximize)', () => {

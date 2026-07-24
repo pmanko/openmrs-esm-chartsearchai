@@ -9,6 +9,7 @@ import {
   type AiConfidenceSection,
   type AiInDepth,
   type AiReference,
+  type AiSafetyStatus,
   type AiSafetyWarning,
   SESSION_EXPIRED_ERROR_CODE,
 } from '../api/chartsearchai';
@@ -23,6 +24,9 @@ interface AiResponsePanelProps {
   answer: string;
   references: AiReference[];
   safetyWarnings?: AiSafetyWarning[];
+  /** checked/limited/unavailable — surfaced even when safetyWarnings is empty, so a clean check
+   *  is never visually indistinguishable from one that could not run. */
+  safetyStatus?: AiSafetyStatus;
   blocks?: AiBlock[];
   auditLogId?: number;
   error: string | null;
@@ -134,6 +138,22 @@ function safetyWarningTag(type: string, t: Translate): { tagType: 'red' | 'magen
       return { tagType: 'magenta', label: t('safetyInteraction', 'Interaction') };
     default:
       return { tagType: 'red', label: t('safetyWarning', 'Safety') };
+  }
+}
+
+/**
+ * Maps a non-`checked` safety status to a Carbon Tag. `checked` renders nothing here — a clean
+ * check stays silent, same as before this status existed. `limited`/`unavailable` must always be
+ * visible, even with zero warnings, so they can never be mistaken for a clean checked result.
+ */
+function safetyStatusTag(status: AiSafetyStatus, t: Translate): { tagType: 'gray'; label: string } | null {
+  switch (status) {
+    case 'limited':
+      return { tagType: 'gray', label: t('safetyLimited', 'Limited safety check') };
+    case 'unavailable':
+      return { tagType: 'gray', label: t('safetyUnavailable', 'Safety check unavailable') };
+    default:
+      return null;
   }
 }
 function stripCitations(answer: string): string {
@@ -388,6 +408,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   answer,
   references,
   safetyWarnings,
+  safetyStatus,
   blocks,
   auditLogId,
   error,
@@ -622,29 +643,43 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         </div>
       )}
 
-      {safetyWarnings && safetyWarnings.length > 0 && (
-        // No live-region role: the panel already sits inside the chat history's
-        // role="log" aria-live="polite", which announces this content in order. An
-        // assertive role="alert" here would preempt the answer it annotates.
-        <div className={styles.safetyWarningsSection} data-testid="ai-response-safety">
-          <span className={styles.safetyWarningsLabel}>{t('safetyChecks', 'Safety checks')}:</span>
-          <div className={styles.safetyWarningsList}>
-            {safetyWarnings.map((warning, i) => {
-              const { tagType, label } = safetyWarningTag(warning.type, t);
-              return (
-                <span key={`${warning.type}-${warning.drug}-${i}`} className={styles.safetyWarningItem}>
-                  <Tag type={tagType} size="sm" className={styles.safetyWarningBadge}>
-                    {label}
+      {(() => {
+        const statusTag = safetyStatus ? safetyStatusTag(safetyStatus, t) : null;
+        const hasWarnings = Boolean(safetyWarnings && safetyWarnings.length > 0);
+        if (!statusTag && !hasWarnings) {
+          return null;
+        }
+        return (
+          // No live-region role: the panel already sits inside the chat history's
+          // role="log" aria-live="polite", which announces this content in order. An
+          // assertive role="alert" here would preempt the answer it annotates.
+          <div className={styles.safetyWarningsSection} data-testid="ai-response-safety">
+            <span className={styles.safetyWarningsLabel}>{t('safetyChecks', 'Safety checks')}:</span>
+            <div className={styles.safetyWarningsList}>
+              {statusTag && (
+                <span className={styles.safetyWarningItem}>
+                  <Tag type={statusTag.tagType} size="sm" className={styles.safetyWarningBadge}>
+                    {statusTag.label}
                   </Tag>
-                  <span className={styles.safetyWarningText}>
-                    {warning.type}:{warning.drug}: {warning.detail}
-                  </span>
                 </span>
-              );
-            })}
+              )}
+              {safetyWarnings?.map((warning, i) => {
+                const { tagType, label } = safetyWarningTag(warning.type, t);
+                return (
+                  <span key={`${warning.type}-${warning.drug}-${i}`} className={styles.safetyWarningItem}>
+                    <Tag type={tagType} size="sm" className={styles.safetyWarningBadge}>
+                      {label}
+                    </Tag>
+                    <span className={styles.safetyWarningText}>
+                      {warning.type}:{warning.drug}: {warning.detail}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {answer && isTerminal(phase) && (
         <div className={styles.actionsRow}>
