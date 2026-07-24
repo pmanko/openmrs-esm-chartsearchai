@@ -51,6 +51,40 @@ describe('useChartSearchAi', () => {
     expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-1');
   });
 
+  it("syncs selectedProviderId to the restored conversation's real provider on hydration", async () => {
+    // Regression guard: the picker reads selectedProviderId, and until this fix, nothing ever
+    // wrote it on hydration — so after a reload, the picker could keep showing a stale provider
+    // that has nothing to do with the conversation actually restored on screen. The next
+    // submitted question would then carry the WRONG provider alongside the restored session,
+    // and the backend (which correctly closes/creates a new conversation on a provider mismatch)
+    // would silently start a second, different conversation the UI never visibly separated from
+    // the first — a live-observed bug this test pins down.
+    chatSessionStore.setState({ selectedProviderId: 'hub' });
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-bundled',
+      provider: 'bundled',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'What medications is the patient on?', createdAt: 1 },
+        { messageId: 'a-1', role: 'assistant', content: 'Lisinopril 10 mg [1].', createdAt: 2 },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(chatSessionStore.getState().selectedProviderId).toBe('bundled');
+  });
+
+  it('leaves selectedProviderId alone when the restored conversation has no provider (e.g. no history yet)', async () => {
+    chatSessionStore.setState({ selectedProviderId: 'hub' });
+    mockFetchHistory.mockResolvedValueOnce({ session: 'srv-session-empty', messages: [] });
+
+    renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+    expect(chatSessionStore.getState().selectedProviderId).toBe('hub');
+  });
+
   it('hydrates a stale pending In-Depth as failed instead of showing a permanent spinner', async () => {
     mockFetchHistory.mockResolvedValueOnce({
       session: 'srv-session-1',
@@ -203,6 +237,40 @@ describe('useChartSearchAi', () => {
       expect.any(String),
       undefined,
     );
+  });
+
+  it('drops the prior conversation from view when the backend silently starts a new one', async () => {
+    // Live-observed bug: after a reload, the picker could show a stale provider unrelated to the
+    // restored conversation. Submitting with that wrong provider alongside the old session made
+    // the backend correctly refuse to write into the mismatched conversation and open a new one
+    // (ConversationServiceImpl.openOrCreate closes the old, creates a new) — but the frontend kept
+    // the old conversation's messages on screen, visually gluing two different providers' turns
+    // into one thread. onSession returning a DIFFERENT uuid than the turn was sent with is the
+    // signal that happened; the old turns must be dropped, not merged with the new one.
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-old-bundled',
+      provider: 'bundled',
+      messages: [
+        { messageId: 'u-0', role: 'user', content: 'What medications is the patient on?', createdAt: 1 },
+        { messageId: 'a-0', role: 'assistant', content: 'Lisinopril 10 mg [1].', createdAt: 2 },
+      ],
+    });
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Does the patient have any allergies?');
+    });
+    expect(result.current.messages).toHaveLength(2);
+
+    const callbacks = mockChatStream.mock.calls[0][3];
+    act(() => {
+      callbacks.onSession('srv-session-new-hub');
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].question).toBe('Does the patient have any allergies?');
   });
 
   it('does not let a late-arriving hydration response clobber a session a turn already corrected', async () => {

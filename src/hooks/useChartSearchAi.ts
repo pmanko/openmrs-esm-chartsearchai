@@ -213,6 +213,16 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           return;
         }
         setSessionUuid(patientUuid, response.session ?? null);
+        // The picker's displayed value (selectedProviderId) is otherwise never written except by
+        // an explicit user click — nothing previously synced it to the conversation actually
+        // restored here. Left alone, a reload could show one provider's conversation while the
+        // picker still displayed a stale different one, so the next question would carry the
+        // wrong provider id alongside this (now-mismatched) session — and since the backend
+        // correctly closes/creates a new conversation on that mismatch, the UI would silently
+        // start a second conversation without ever visibly separating it from the first.
+        if (response.provider) {
+          chatSessionStore.setState({ selectedProviderId: response.provider });
+        }
         const hydrated = hydrateMessages(response.messages ?? []);
         if (hydrated.length > 0) {
           updateMessages(patientUuid, () => hydrated);
@@ -521,6 +531,14 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           question,
           {
             onSession: (uuid) => {
+              // Defense in depth alongside the hydration-time provider sync: if the backend
+              // returns a DIFFERENT session than the one this turn was sent with, it silently
+              // started a new conversation (e.g. a provider mismatch the backend correctly
+              // refuses to write into the old one — see ConversationServiceImpl.openOrCreate).
+              // The old conversation's turns must not stay visible glued to this one.
+              if (sessionUuid && uuid && uuid !== sessionUuid) {
+                updateMessages(patientUuid, (prev) => prev.filter((m) => m.id === messageId));
+              }
               setSessionUuid(patientUuid, uuid);
             },
             onAnswerDone: answerDone,

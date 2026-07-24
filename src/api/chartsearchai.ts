@@ -184,6 +184,9 @@ export interface ChatHistoryMessage {
 
 export interface ChatHistoryResponse {
   session: string;
+  /** The provider that produced this conversation (bundled/hub). Absent only when there is no
+   *  conversation yet (empty history). */
+  provider?: string;
   messages: ChatHistoryMessage[];
 }
 
