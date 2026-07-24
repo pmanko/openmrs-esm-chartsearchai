@@ -329,6 +329,31 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages[0].phase).toBe('settled');
   });
 
+  it('leaves inDepth unset on answer_done when the provider has no In-Depth capability at all', async () => {
+    // Live-observed bug: bundled never sends inDepth (it has no such capability -
+    // BundledClinicalAnswerProvider never advertises INDEPTH) and never follows up with an
+    // indepth_pending/indepth_done event either. A synthesized {status: 'pending'} placeholder
+    // here can therefore never resolve — a permanent "Preparing in-depth..." spinner on every
+    // bundled answer. A real pending state is only ever established by the dedicated
+    // onInDepthPending event (see 'tracks the turn phase through the staged lifecycle'), which a
+    // provider that actually supports In-Depth fires separately - answer_done must not fabricate
+    // one on its own.
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What medications is the patient on?');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      callbacks.onAnswerDone({ answer: 'Lisinopril 10 mg [1].', references: [], messageId: 'm1' });
+    });
+
+    expect(result.current.messages[0].inDepth).toBeUndefined();
+  });
+
   it('finalizes last message on streaming done with auditLogId separately from messageId', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
@@ -860,6 +885,30 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages[0].phase).toBe('error');
     expect(result.current.messages[0].answer).toBe('Partial answer.');
     expect(result.current.messages[0].answerValidation?.status).toBe('unavailable');
+    // The stream failed before any indepth_pending event ever arrived, so In-Depth was never
+    // shown as pending in the first place — there is nothing to mark "interrupted".
+    expect(result.current.messages[0].inDepth).toBeUndefined();
+  });
+
+  it('marks a genuinely pending In-Depth as interrupted when the stream fails mid-flight', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Q?');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+    act(() =>
+      callbacks.onAnswerDone({
+        answer: 'Partial answer.',
+        references: [],
+        answerValidation: { status: 'checking', label: 'Checking answer' },
+      }),
+    );
+    act(() => callbacks.onInDepthPending({ inDepth: { status: 'pending', answer: '' } }));
+    act(() => callbacks.onError('Stream failed'));
+
     expect(result.current.messages[0].inDepth).toEqual({
       status: 'failed',
       answer: '',

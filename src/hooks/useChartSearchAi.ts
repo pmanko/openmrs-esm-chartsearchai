@@ -431,11 +431,12 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           if (idx === -1) return prev;
           const updated = [...prev];
           const phase = response.answerValidation?.status === 'checking' ? 'checking' : 'settled';
-          updated[idx] = applyTurnEnvelope(
-            updated[idx],
-            { ...response, inDepth: response.inDepth ?? { status: 'pending', answer: '' } },
-            phase,
-          );
+          // Do NOT synthesize a pending inDepth here when the response omits one. A provider
+          // that actually supports In-Depth (e.g. the hub) establishes its real pending state via
+          // its own indepth_pending event; a provider with no In-Depth capability at all (e.g.
+          // bundled) never sends one and never follows up — fabricating {status: 'pending'} for
+          // it would show a "Preparing in-depth..." spinner that can never resolve.
+          updated[idx] = applyTurnEnvelope(updated[idx], response, phase);
           return updated;
         });
         if (response.session) {
