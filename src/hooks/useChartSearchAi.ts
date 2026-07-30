@@ -283,7 +283,8 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
     inFlightMessageIdRef.current = null;
     updateMessages(patientUuid, () => []);
     setSessionUuid(patientUuid, null);
-    startNewChat(patientUuid)
+    const providerId = chatSessionStore.getState().selectedProviderId ?? undefined;
+    startNewChat(patientUuid, providerId)
       .then((response) => {
         if (!isMountedRef.current) return;
         setSessionUuid(patientUuid, response.session ?? null);
@@ -295,8 +296,10 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
 
   const submitQuestion = useCallback(
     (patientUuid: string, question: string) => {
-      const discoveryStatus = chatSessionStore.getState().profileDiscoveryStatus;
-      if (discoveryStatus !== 'ready') {
+      const state = chatSessionStore.getState();
+      const selectedProviderId = state.selectedProviderId ?? undefined;
+      const discoveryStatus = state.profileDiscoveryStatus;
+      if (selectedProviderId === 'hub' && discoveryStatus !== 'ready') {
         const error =
           discoveryStatus === 'loading'
             ? 'AI profiles are still loading. Try again in a moment.'
@@ -313,8 +316,8 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => [...prev, failedMessage]);
         return;
       }
-      const selectedProfileId = chatSessionStore.getState().selectedProfileId;
-      if (!selectedProfileId) {
+      const selectedProfileId = selectedProviderId === 'hub' ? (state.selectedProfileId ?? undefined) : undefined;
+      if (selectedProviderId === 'hub' && !selectedProfileId) {
         const failedMessage: ChatMessage = {
           id: generateId(),
           question,
@@ -521,8 +524,6 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       const sessionUuid = sessionUuidByPatient[patientUuid] ?? null;
       // Null means "no explicit selection" — the backend applies its configured
       // default provider, never a silent cross-provider fallback.
-      const selectedProviderId = chatSessionStore.getState().selectedProviderId ?? undefined;
-
       try {
         // Multi-turn streaming: chat history is reconstructed server-side
         // from the session uuid; we only send the new question.

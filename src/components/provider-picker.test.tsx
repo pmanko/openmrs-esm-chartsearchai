@@ -63,8 +63,7 @@ describe('ProviderPicker', () => {
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
     expect(container).toBeEmptyDOMElement();
-    // No implicit selection is written; the backend applies its default.
-    expect(chatSessionStore.getState().selectedProviderId).toBeNull();
+    expect(chatSessionStore.getState().selectedProviderId).toBe('bundled');
   });
 
   it('shows the provider menu with the default marked when multiple providers exist', async () => {

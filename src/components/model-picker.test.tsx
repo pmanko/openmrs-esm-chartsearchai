@@ -61,6 +61,7 @@ beforeEach(() => {
     sessionUuidByPatient: {},
     selectedProfileId: null,
     profileDiscoveryStatus: 'loading',
+    selectedProviderId: 'hub',
   });
   mockFetch.mockReturnValue(new Promise(() => {}));
 });
@@ -118,33 +119,18 @@ describe('ModelPicker', () => {
     expect(onSwitched).toHaveBeenCalledWith('team-med-checked');
   });
 
-  it('routes to the hub provider when a profile is selected, since every profile is a hub concept', async () => {
-    chatSessionStore.setState({ selectedProviderId: null });
-    mockFetch.mockResolvedValueOnce(PROFILE_DATA);
-    render(<ModelPicker />);
-    await openMenu();
+  it('never discovers profiles or changes provider for bundled inference', async () => {
+    chatSessionStore.setState({ selectedProviderId: 'bundled' });
+    const { container } = render(<ModelPicker />);
 
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Checked medical team/i }));
-    await waitFor(() => expect(chatSessionStore.getState().selectedProfileId).toBe('team-med-checked'));
-    expect(chatSessionStore.getState().selectedProviderId).toBe('hub');
+    await Promise.resolve();
+
+    expect(container).toBeEmptyDOMElement();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(chatSessionStore.getState().selectedProviderId).toBe('bundled');
   });
 
-  it('routes to hub from the passively auto-selected default profile, with no click at all', async () => {
-    // Carbon's MenuItemRadioGroup does not fire onChange for a click that reselects the
-    // already-checked item, so a caller who accepts the picker's visible default (never
-    // picking a *different* item) never goes through handleSelect. The component's
-    // discovery-default effect is the only thing that ever picks the profile in that case,
-    // so the hub-provider routing has to live there too, not only in the click handler.
-    chatSessionStore.setState({ selectedProviderId: null });
-    mockFetch.mockResolvedValueOnce(PROFILE_DATA);
-    render(<ModelPicker />);
-
-    await waitFor(() => expect(chatSessionStore.getState().selectedProfileId).toBe('single-e4b-checked'));
-    expect(chatSessionStore.getState().selectedProviderId).toBe('hub');
-  });
-
-  it('leaves the provider alone once it is already hub', async () => {
-    chatSessionStore.setState({ selectedProviderId: 'hub' });
+  it('leaves the explicit hub provider selected when its profile changes', async () => {
     mockFetch.mockResolvedValueOnce(PROFILE_DATA);
     render(<ModelPicker />);
     await openMenu();

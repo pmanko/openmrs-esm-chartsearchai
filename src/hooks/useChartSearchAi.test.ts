@@ -21,7 +21,7 @@ beforeEach(() => {
     sessionUuidByPatient: {},
     selectedProfileId: 'single-e4b-checked',
     profileDiscoveryStatus: 'ready',
-    selectedProviderId: null,
+    selectedProviderId: 'hub',
   });
   // Default: empty hydration so tests opt-in to populated history.
   mockFetchHistory.mockResolvedValue({ session: 'srv-session-default', messages: [] });
@@ -165,7 +165,7 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       'single-e4b-checked',
       expect.any(String),
-      undefined,
+      'hub',
     );
   });
 
@@ -186,6 +186,32 @@ describe('useChartSearchAi', () => {
         error: 'AI profiles are unavailable. Check the med-agent-hub connection.',
       }),
     );
+  });
+
+  it('submits bundled turns without med-agent-hub profile discovery', () => {
+    chatSessionStore.setState({
+      selectedProviderId: 'bundled',
+      profileDiscoveryStatus: 'unavailable',
+      selectedProfileId: null,
+    });
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What meds?');
+    });
+
+    expect(mockChatStream).toHaveBeenCalledWith(
+      'patient-uuid',
+      null,
+      'What meds?',
+      expect.any(Object),
+      expect.any(AbortController),
+      undefined,
+      expect.any(String),
+      'bundled',
+    );
+    expect(result.current.messages[0].phase).toBe('answering');
   });
 
   it('does not call chat when discovery is ready without a selected product profile', () => {
@@ -235,7 +261,7 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       'single-e4b-checked',
       expect.any(String),
-      undefined,
+      'hub',
     );
   });
 
@@ -635,7 +661,7 @@ describe('useChartSearchAi', () => {
     });
 
     expect(result.current.messages).toEqual([]);
-    expect(mockStartNewChat).toHaveBeenCalledWith('patient-uuid');
+    expect(mockStartNewChat).toHaveBeenCalledWith('patient-uuid', 'hub');
     await waitFor(() => expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-2'));
   });
 
@@ -698,7 +724,7 @@ describe('useChartSearchAi', () => {
       expect.any(AbortController),
       'team-med-checked',
       expect.any(String),
-      undefined,
+      'hub',
     );
   });
 

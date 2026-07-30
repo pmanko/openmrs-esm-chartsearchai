@@ -221,7 +221,7 @@ export async function submitFeedback(feedback: AiFeedback): Promise<void> {
  * ReadableStream). The staged endpoint emits answer/validation/in-depth boundary events:
  *   - sends an optional {@code session} uuid so the server can reuse the
  *     prior conversation thread
- *   - sends the selected hub product profile for every request
+ *   - sends a product profile only for med-agent-hub requests
  *   - captures the server's {@code X-ChartSearchAi-Session} response header
  *     and surfaces it via {@code onSession} before the first content event arrives
  *
@@ -243,16 +243,19 @@ export function chatPatientChartStream(
     onError: (error: string) => void;
   },
   abortController: AbortController | undefined,
-  profileId: string,
+  profileId?: string,
   requestId?: string,
   providerId?: string,
 ): void {
-  if (!profileId.trim()) {
+  if (providerId === 'hub' && !profileId?.trim()) {
     throw new Error('A product profile is required');
   }
 
   const url = `${window.openmrsBase}${BASE_PATH}/chat/stream`;
-  const body: Record<string, string> = { patient: patientUuid, question, profile: profileId };
+  const body: Record<string, string> = { patient: patientUuid, question };
+  if (profileId?.trim()) {
+    body.profile = profileId;
+  }
   if (requestId?.trim()) {
     body.requestId = requestId;
   }
@@ -469,12 +472,17 @@ export async function fetchChatHistory(
  */
 export async function startNewChat(
   patientUuid: string,
+  providerId?: string,
   abortController?: AbortController,
 ): Promise<ChatHistoryResponse> {
+  const body: Record<string, string> = { patient: patientUuid };
+  if (providerId?.trim()) {
+    body.provider = providerId;
+  }
   const response = await openmrsFetch(`${BASE_PATH}/chat/new`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ patient: patientUuid }),
+    body: JSON.stringify(body),
     signal: abortController?.signal,
   });
   return response.data as ChatHistoryResponse;

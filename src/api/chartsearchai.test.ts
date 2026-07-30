@@ -86,7 +86,7 @@ describe('chatPatientChartStream', () => {
       .spyOn(window, 'fetch')
       .mockResolvedValueOnce(mockStreamResponse(['event:turn_done\ndata: {"session":"sess-1"}\n\n']));
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1', 'hub');
     await flushPromises();
 
     expect(sentBody()).toMatchObject({
@@ -112,23 +112,24 @@ describe('chatPatientChartStream', () => {
     expect(sentBody()).toMatchObject({ provider: 'hub' });
   });
 
-  it('omits provider when none is selected so the backend applies its default', async () => {
+  it('sends bundled turns without a hub profile', async () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
       .mockResolvedValueOnce(mockStreamResponse(['event:turn_done\ndata: {"session":"s"}\n\n']));
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'turn-1', 'bundled');
     await flushPromises();
 
-    expect(sentBody()).not.toHaveProperty('provider');
+    expect(sentBody()).toMatchObject({ provider: 'bundled' });
+    expect(sentBody()).not.toHaveProperty('profile');
   });
 
-  it('rejects an empty profile instead of relying on a relay fallback', () => {
+  it('rejects an empty hub profile instead of relying on a relay fallback', () => {
     const cb = makeCallbacks();
     fetchSpy = vi.spyOn(window, 'fetch');
 
-    expect(() => chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, '')).toThrow(
+    expect(() => chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, '', undefined, 'hub')).toThrow(
       'A product profile is required',
     );
     expect(window.fetch).not.toHaveBeenCalled();
@@ -145,7 +146,7 @@ describe('chatPatientChartStream', () => {
         ]),
       );
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked', undefined, 'hub');
     await flushPromises();
 
     expect(cb.onAnswerDone).toHaveBeenCalledWith(expect.objectContaining({ resolvedModel: 'med-agent-team' }));
@@ -166,7 +167,7 @@ describe('chatPatientChartStream', () => {
         ]),
       );
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', undefined, 'hub');
     await flushPromises();
 
     expect(sentBody()).toMatchObject({ profile: 'team-med-checked' });

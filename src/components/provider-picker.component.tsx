@@ -61,6 +61,15 @@ const ProviderPicker: React.FC<ProviderPickerProps> = ({ onSwitched }) => {
     [availableProviders, effectiveProviderId],
   );
 
+  // Make the backend-advertised default explicit in shared state so provider-specific controls
+  // know which contract applies. This does not start a new conversation: it records the provider
+  // the backend would select anyway.
+  useEffect(() => {
+    if (effectiveProviderId && effectiveProviderId !== selectedProviderId) {
+      chatSessionStore.setState({ selectedProviderId: effectiveProviderId });
+    }
+  }, [effectiveProviderId, selectedProviderId]);
+
   const handleSelect = useCallback(
     (providerId: string) => {
       if (providerId === effectiveProviderId) {

@@ -21,11 +21,14 @@ interface ProfileSection {
 const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
   const { t } = useTranslation();
   const { showModelPicker } = useConfig<ChartSearchAiConfig>();
-  const { selectedProfileId } = useStore(chatSessionStore);
+  const { selectedProfileId, selectedProviderId } = useStore(chatSessionStore);
   const [data, setData] = useState<HubProfileListResponse | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
+    if (selectedProviderId !== 'hub') {
+      return;
+    }
     const controller = new AbortController();
     chatSessionStore.setState({ profileDiscoveryStatus: 'loading' });
     fetchProfiles(controller)
@@ -41,7 +44,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
         }
       });
     return () => controller.abort();
-  }, []);
+  }, [selectedProviderId]);
 
   const productProfiles = useMemo(
     () => (Array.isArray(data?.data) ? data.data : []).filter((profile) => profile.visibility === 'product'),
@@ -67,30 +70,6 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
       chatSessionStore.setState({ selectedProfileId: nextId, profileDiscoveryStatus });
     }
   }, [data, effectiveProfile, selectedProfileId]);
-
-  // Every profile advertised here comes from the hub (see the component docstring above), so
-  // having ANY effective profile — whether the user explicitly picked one or this picker simply
-  // auto-selected the hub's advertised default on load — must route turns through the hub
-  // provider. Otherwise the bundled provider silently ignores the chosen profile (it has no
-  // concept of profiles and no In-Depth capability). This has to be its own effect rather than
-  // living only in the click handler: Carbon's MenuItemRadioGroup does not fire onChange for a
-  // click that reselects the already-checked item, so a caller who accepts the visible default
-  // without ever picking a *different* item never goes through a click handler at all.
-  //
-  // This only updates the store value — it deliberately does NOT reset the conversation the way
-  // ProviderPicker's explicit switch does. The backend's own resolveConversation already opens a
-  // fresh provider-matched conversation the next time a turn is submitted with a mismatched
-  // provider (it only reuses a conversation when providerId matches), so nothing here is required
-  // for correctness; a reset fired from this effect would instead race the picker's own initial
-  // render and can close its menu mid-interaction.
-  useEffect(() => {
-    if (!effectiveProfile) {
-      return;
-    }
-    if (chatSessionStore.getState().selectedProviderId !== 'hub') {
-      chatSessionStore.setState({ selectedProviderId: 'hub' });
-    }
-  }, [effectiveProfile]);
 
   const sections = useMemo<ProfileSection[]>(() => {
     const definitions = [
@@ -118,7 +97,7 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ onSwitched }) => {
     [onSwitched],
   );
 
-  if (showModelPicker === false) {
+  if (showModelPicker === false || selectedProviderId !== 'hub') {
     return null;
   }
 
