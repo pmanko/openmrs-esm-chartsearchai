@@ -22,7 +22,9 @@ Low-confidence output remains visible with its warning so a clinician or evaluat
 
 ## Backend
 
-This frontend requires the [Chart Search AI backend module](https://github.com/openmrs/openmrs-module-chartsearchai). The Java module authorizes the patient request, persists the conversation, and relays one staged request to med-agent-hub. The hub owns profile composition, context sources, temporal and safety checks, answer review, citation grounding, and In-Depth generation.
+This frontend requires the [Chart Search AI backend module](https://github.com/openmrs/openmrs-module-chartsearchai). It is provider-neutral: the backend advertises the enabled provider and capabilities, then the frontend renders the returned lifecycle without choosing provider endpoints.
+
+The **bundled provider** keeps ChartSearchAI's local or configured remote engine, token-streaming answer path, and bundled context, safety, and grounding behavior. The **med-agent-hub provider** relays one staged hub profile request; the hub owns profile composition, optional context sources, temporal and safety checks, answer review, citation grounding, and In-Depth generation. Switching providers starts a new conversation, and there is no automatic fallback between them.
 
 The frontend renders those lifecycle and evidence states. It does not choose provider endpoints, compose model stages, or maintain a model catalog.
 
@@ -50,7 +52,7 @@ The following options can be set via the OpenMRS 3.x config system:
 |---|---|---|---|
 | `aiSearchPlaceholder` | `string` | `"Ask AI about this patient..."` | Placeholder text for the search input |
 | `maxQuestionLength` | `number` | `1000` | Maximum characters allowed in a question |
-| `showModelPicker` | `boolean` | `true` | Show available med-agent-hub product profiles |
+| `showModelPicker` | `boolean` | `true` | Show configured providers and, when supported, the selected provider's profiles |
 
 ## API endpoints used
 
@@ -62,9 +64,10 @@ All endpoints are served by the backend module under `/ws/rest/v1/chartsearchai/
 | POST | `/chat/stream` | SSE staged chat turn (answer/validation/in-depth phase events; multi-turn via `session`) |
 | GET | `/chat` | Hydrate a patient's active session + prior messages |
 | POST | `/chat/new` | Close the active session and open a fresh one |
-| GET | `/models` | Relay med-agent-hub product-profile metadata |
+| GET | `/providers` | Discover enabled provider metadata and capabilities |
+| GET | `/models` | Discover med-agent-hub profiles when the hub provider is enabled |
 
-Request body: `{ "patient": "<uuid>", "question": "<text>", "session": "<uuid, optional>", "profile": "<required hub product profile>" }`
+Request body: `{ "patient": "<uuid>", "question": "<text>", "session": "<uuid, optional>", "provider": "<configured provider, optional>", "profile": "<hub profile when selected, optional>" }`
 
 Response (`POST /chat`, and the final `done` event of `POST /chat/stream`):
 ```json
@@ -83,10 +86,11 @@ Response (`POST /chat`, and the final `done` event of `POST /chat/stream`):
 
 `references[].resourceUuid` is the cited record's UUID (used to locate and highlight the chart row). `safetyWarnings` (each `{ type, drug, detail }`) is always present and empty unless the backend's optional drug-reference feature is enabled; the panel renders any entries as chips below the answer.
 
-Product profiles emit this staged sequence:
+Hub product profiles emit this staged sequence:
 `answer_done` (direct answer complete) → optional `answer_validation` (self-check result) →
 `indepth_pending` → `indepth_done` or `indepth_error` → `done`. The hub does not token-stream the
-answer or in-depth text; each content phase is delivered whole. See the
+answer or in-depth text; each content phase is delivered whole. The bundled provider may instead
+emit answer token events before its terminal answer. See the
 [backend README's streaming chat docs](https://github.com/openmrs/openmrs-module-chartsearchai#streaming-chat-sse) for the full event reference.
 
 The required privilege is **AI Query Patient Data**.
