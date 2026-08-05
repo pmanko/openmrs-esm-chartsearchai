@@ -355,6 +355,36 @@ describe('useChartSearchAi', () => {
     expect(result.current.messages[0].phase).toBe('settled');
   });
 
+  it('keeps the canonical safety result from answer_done while later phases settle', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'Is ibuprofen safe?');
+    });
+    const callbacks = mockChatStream.mock.calls[0][3];
+
+    act(() => {
+      callbacks.onAnswerDone({
+        answer: 'Ibuprofen could be considered [1].',
+        references: [],
+        messageId: 'm1',
+        safetyStatus: 'limited',
+        safetyCheck: {
+          schema_version: 'drug_safety.v1',
+          status: 'limited',
+          package: { id: 'research-seed-v1', review_state: 'proposed' },
+          issues: ['source_not_clinically_approved'],
+        },
+      });
+      callbacks.onDone({ answer: 'Ibuprofen could be considered [1].', references: [] });
+    });
+
+    expect(result.current.messages[0].safetyCheck?.issues).toEqual(['source_not_clinically_approved']);
+    expect(result.current.messages[0].phase).toBe('complete');
+  });
+
   it('leaves inDepth unset on answer_done when the provider has no In-Depth capability at all', async () => {
     // Live-observed bug: bundled never sends inDepth (it has no such capability -
     // BundledClinicalAnswerProvider never advertises INDEPTH) and never follows up with an
@@ -514,6 +544,39 @@ describe('useChartSearchAi', () => {
 
     await waitFor(() => expect(result.current.messages).toHaveLength(1));
     expect(result.current.messages[0].safetyStatus).toBe('unavailable');
+  });
+
+  it('hydrates the canonical safety result so limitation reasons survive reload', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-safety-check',
+      messages: [
+        { messageId: 'u-1', role: 'user', content: 'Is ibuprofen safe?', createdAt: 1 },
+        {
+          messageId: 'a-1',
+          role: 'assistant',
+          content: 'Ibuprofen could be considered [1].',
+          safetyWarnings: [],
+          safetyStatus: 'limited',
+          safetyCheck: {
+            schema_version: 'drug_safety.v1',
+            status: 'limited',
+            package: { id: 'research-seed-v1', review_state: 'proposed' },
+            issues: ['source_not_clinically_approved'],
+          },
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].safetyCheck).toEqual({
+      schema_version: 'drug_safety.v1',
+      status: 'limited',
+      package: { id: 'research-seed-v1', review_state: 'proposed' },
+      issues: ['source_not_clinically_approved'],
+    });
   });
 
   it('sets error on streaming onError', async () => {

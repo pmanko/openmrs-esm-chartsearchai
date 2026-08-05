@@ -675,6 +675,43 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.getByText('Limited safety check')).toBeInTheDocument();
   });
 
+  it('explains a limited check with readable package and coverage details', () => {
+    render(
+      <AiResponsePanel
+        answer="Ibuprofen could be considered [1]."
+        references={[]}
+        safetyWarnings={[]}
+        safetyStatus="limited"
+        safetyCheck={{
+          schema_version: 'drug_safety.v1',
+          status: 'limited',
+          package: {
+            id: 'chartsearchai-research-seed-v1',
+            version: '1',
+            review_state: 'proposed',
+          },
+          coverage: {
+            mapping_complete: false,
+            exposure_complete: true,
+            execution_complete: true,
+          },
+          identity_confidence: 'limited',
+          issues: ['source_not_clinically_approved', 'mapping_incomplete'],
+        }}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    const summary = screen.getByTestId('safety-check-summary');
+    expect(summary).toHaveTextContent('Check details');
+    expect(summary).toHaveTextContent('research source is not clinically approved');
+    expect(summary).toHaveTextContent('Not every active medication could be mapped');
+    expect(summary).toHaveTextContent('Source: chartsearchai-research-seed-v1 (1)');
+  });
+
   it('surfaces both the status tag and the individual warnings together', () => {
     render(
       <AiResponsePanel

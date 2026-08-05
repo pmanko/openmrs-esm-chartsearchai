@@ -457,9 +457,23 @@
   flex-direction: column;
   gap: layout.$spacing-02;
   padding: layout.$spacing-03;
-  background-color: colors.$red-10;
-  border-left: 3px solid colors.$red-60;
+  border-left: 3px solid colors.$gray-50;
   border-radius: 0.25rem;
+}
+
+.safetyWarnings_flagged {
+  background-color: colors.$red-10;
+  border-left-color: colors.$red-60;
+}
+
+.safetyWarnings_limited {
+  background-color: colors.$yellow-10;
+  border-left-color: colors.$yellow-30;
+}
+
+.safetyWarnings_unavailable {
+  background-color: colors.$gray-10;
+  border-left-color: colors.$gray-50;
 }
 
 .safetyWarningsLabel {
@@ -497,5 +511,30 @@
   // it can shrink and wrap within the remaining row width (instead of forcing the badge to shrink),
   // and overflow-wrap breaks an over-long unbroken token (e.g. an ATC code) rather than overflowing.
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.safetyCheckSummary {
+  color: colors.$gray-90;
+  border-top: 1px solid colors.$gray-30;
+  padding-top: layout.$spacing-03;
+}
+
+.safetyCheckSummaryHeading {
+  @include type.type-style('label-01');
+  font-weight: 600;
+  margin-bottom: layout.$spacing-02;
+}
+
+.safetyCheckIssueList {
+  @include type.type-style('body-compact-01');
+  margin: 0;
+  padding-left: layout.$spacing-05;
+}
+
+.safetyCheckSource {
+  @include type.type-style('helper-text-01');
+  color: colors.$gray-70;
+  margin-top: layout.$spacing-03;
   overflow-wrap: anywhere;
 }

@@ -173,7 +173,7 @@ describe('chatPatientChartStream', () => {
       .spyOn(window, 'fetch')
       .mockResolvedValueOnce(
         mockStreamResponse([
-          'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"checking","label":"Checking answer"},"inDepth":{"status":"pending","answer":""}}\n\n',
+          'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1","model":"med-agent-team-high-validated","safetyStatus":"limited","safetyCheck":{"schema_version":"drug_safety.v1","status":"limited","package":{"id":"research-seed-v1","review_state":"proposed"},"issues":["source_not_clinically_approved"]},"answerValidation":{"status":"checking","label":"Checking answer"},"inDepth":{"status":"pending","answer":""}}\n\n',
           'event:answer_validation\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"edited","label":"Updated after check","originalAnswer":"Direct answer [1]","originalReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
           'event:indepth_pending\ndata: {"messageId":"m1","inDepth":{"status":"pending","answer":""}}\n\n',
           'event:indepth_done\ndata: {"inDepth":{"status":"complete","answer":"- background","reviewDraft":"- rejected [1]","reviewReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
@@ -189,6 +189,13 @@ describe('chatPatientChartStream', () => {
       expect.objectContaining({
         answer: 'Direct answer',
         resolvedModel: 'med-agent-team-high-validated',
+        safetyStatus: 'limited',
+        safetyCheck: {
+          schema_version: 'drug_safety.v1',
+          status: 'limited',
+          package: { id: 'research-seed-v1', review_state: 'proposed' },
+          issues: ['source_not_clinically_approved'],
+        },
         answerValidation: { status: 'checking', label: 'Checking answer' },
         inDepth: { status: 'pending', answer: '' },
       }),

@@ -76,6 +76,29 @@ export interface AiSafetyWarning {
  */
 export type AiSafetyStatus = 'checked' | 'limited' | 'unavailable';
 
+/** Provenance and coverage for the deterministic medication-safety pass. */
+export interface AiSafetyCheck {
+  schema_version?: 'drug_safety.v1' | string;
+  status: AiSafetyStatus;
+  warnings?: AiSafetyWarning[];
+  package?: {
+    id?: string;
+    source_format?: string;
+    version?: string;
+    provenance?: unknown;
+    review_state?: 'proposed' | 'evidence_curated' | 'clinically_approved' | 'retired' | string;
+  };
+  coverage?: {
+    mapping_complete?: boolean;
+    exposure_complete?: boolean;
+    execution_complete?: boolean;
+    active_order_count?: number;
+    mapped_active_order_count?: number;
+  };
+  identity_confidence?: 'high' | 'limited' | 'unavailable' | string;
+  issues?: string[];
+}
+
 export interface AiCell {
   text: string;
   refs?: number[];
@@ -148,6 +171,8 @@ export interface AiSearchResponse {
   safetyWarnings?: AiSafetyWarning[];
   /** checked/limited/unavailable — present alongside safetyWarnings, even when it's empty. */
   safetyStatus?: AiSafetyStatus;
+  /** Canonical safety result with source identity, coverage, and limitation reasons. */
+  safetyCheck?: AiSafetyCheck;
   blocks?: AiBlock[];
   /** Numeric OpenMRS audit row id used only for feedback. */
   auditLogId?: number;
@@ -176,6 +201,8 @@ export interface ChatHistoryMessage {
   safetyWarnings?: AiSafetyWarning[];
   /** checked/limited/unavailable — present alongside safetyWarnings, even when it's empty. */
   safetyStatus?: AiSafetyStatus;
+  /** Canonical safety result, persisted with the assistant row for reload and review. */
+  safetyCheck?: AiSafetyCheck;
   confidence?: AiConfidence;
   answerValidation?: AiAnswerValidation;
   inDepth?: AiInDepth;

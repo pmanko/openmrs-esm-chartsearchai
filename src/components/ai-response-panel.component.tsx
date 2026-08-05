@@ -9,6 +9,7 @@ import {
   type AiConfidenceSection,
   type AiInDepth,
   type AiReference,
+  type AiSafetyCheck,
   type AiSafetyStatus,
   type AiSafetyWarning,
   SESSION_EXPIRED_ERROR_CODE,
@@ -27,6 +28,8 @@ interface AiResponsePanelProps {
   /** checked/limited/unavailable — surfaced even when safetyWarnings is empty, so a clean check
    *  is never visually indistinguishable from one that could not run. */
   safetyStatus?: AiSafetyStatus;
+  /** Canonical safety result; explains package approval and coverage limitations. */
+  safetyCheck?: AiSafetyCheck;
   blocks?: AiBlock[];
   auditLogId?: number;
   error: string | null;
@@ -154,6 +157,35 @@ function safetyStatusTag(status: AiSafetyStatus, t: Translate): { tagType: 'gray
       return { tagType: 'gray', label: t('safetyUnavailable', 'Safety check unavailable') };
     default:
       return null;
+  }
+}
+
+function safetyIssueText(issue: string, t: Translate): string {
+  switch (issue) {
+    case 'source_not_clinically_approved':
+      return t(
+        'safetySourceNotApproved',
+        'The configured research source is not clinically approved for deterministic warnings.',
+      );
+    case 'source_unavailable':
+      return t('safetySourceUnavailable', 'No medication-safety reference source was available.');
+    case 'source_retired':
+      return t('safetySourceRetired', 'The configured medication-safety source has been retired.');
+    case 'patient_context_unavailable':
+      return t('safetyPatientContextUnavailable', 'The patient context needed for this check was unavailable.');
+    case 'mapping_incomplete':
+      return t('safetyMappingIncomplete', 'Not every active medication could be mapped to the reference source.');
+    case 'exposure_incomplete':
+      return t(
+        'safetyExposureIncomplete',
+        'Medication, allergy, or condition context may be incomplete for this check.',
+      );
+    case 'check_scope_limited':
+      return t('safetyScopeLimited', 'Only part of the configured medication-safety check ran.');
+    case 'execution_failed':
+      return t('safetyExecutionFailed', 'The medication-safety check did not complete.');
+    default:
+      return issue.replaceAll('_', ' ');
   }
 }
 function stripCitations(answer: string): string {
@@ -442,6 +474,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   references,
   safetyWarnings,
   safetyStatus,
+  safetyCheck,
   blocks,
   auditLogId,
   error,
@@ -677,16 +710,30 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
       )}
 
       {(() => {
-        const statusTag = safetyStatus ? safetyStatusTag(safetyStatus, t) : null;
+        const effectiveStatus = safetyCheck?.status ?? safetyStatus;
+        const statusTag = effectiveStatus ? safetyStatusTag(effectiveStatus, t) : null;
         const hasWarnings = Boolean(safetyWarnings && safetyWarnings.length > 0);
-        if (!statusTag && !hasWarnings) {
+        const issues = (safetyCheck?.issues ?? []).map((issue) => safetyIssueText(issue, t));
+        const sourceId = safetyCheck?.package?.id?.trim();
+        const sourceVersion = safetyCheck?.package?.version?.trim();
+        if (!statusTag && !hasWarnings && issues.length === 0) {
           return null;
         }
         return (
           // No live-region role: the panel already sits inside the chat history's
           // role="log" aria-live="polite", which announces this content in order. An
           // assertive role="alert" here would preempt the answer it annotates.
-          <div className={styles.safetyWarningsSection} data-testid="ai-response-safety">
+          <div
+            className={`${styles.safetyWarningsSection} ${
+              hasWarnings
+                ? styles.safetyWarnings_flagged
+                : effectiveStatus === 'limited'
+                  ? styles.safetyWarnings_limited
+                  : styles.safetyWarnings_unavailable
+            }`}
+            data-testid="ai-response-safety"
+            role="note"
+          >
             <span className={styles.safetyWarningsLabel}>{t('safetyChecks', 'Safety checks')}:</span>
             <div className={styles.safetyWarningsList}>
               {statusTag && (
@@ -714,6 +761,22 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                 );
               })}
             </div>
+            {issues.length > 0 && (
+              <div className={styles.safetyCheckSummary} data-testid="safety-check-summary">
+                <div className={styles.safetyCheckSummaryHeading}>{t('safetyCheckDetails', 'Check details')}</div>
+                <ul className={styles.safetyCheckIssueList}>
+                  {issues.map((issue, index) => (
+                    <li key={`${issue}-${index}`}>{issue}</li>
+                  ))}
+                </ul>
+                {sourceId && (
+                  <div className={styles.safetyCheckSource}>
+                    {t('safetyCheckSource', 'Source')}: {sourceId}
+                    {sourceVersion ? ` (${sourceVersion})` : ''}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       })()}

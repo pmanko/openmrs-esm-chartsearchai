@@ -6,6 +6,7 @@ import {
   type AiConfidence,
   type AiInDepth,
   type AiReference,
+  type AiSafetyCheck,
   type AiSafetyStatus,
   type AiSafetyWarning,
   type AiSearchResponse,
@@ -25,6 +26,8 @@ export interface ChatMessage {
   safetyWarnings?: AiSafetyWarning[];
   /** checked/limited/unavailable — present alongside safetyWarnings, even when it's empty. */
   safetyStatus?: AiSafetyStatus;
+  /** Canonical safety result with package provenance and coverage limitations. */
+  safetyCheck?: AiSafetyCheck;
   blocks?: AiBlock[];
   auditLogId?: number;
   /**
@@ -117,6 +120,7 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         pending.blocks = m.blocks;
         pending.safetyWarnings = m.safetyWarnings;
         pending.safetyStatus = m.safetyStatus;
+        pending.safetyCheck = m.safetyCheck;
         pending.confidence = m.confidence;
         pending.answerValidation = interruptAnswerValidation(m.answerValidation);
         pending.inDepth = interruptInDepth(m.inDepth);
@@ -166,6 +170,7 @@ function applyTurnEnvelope(message: ChatMessage, payload: TurnEnvelope, phase: T
     references: payload.references ?? message.references,
     safetyWarnings: payload.safetyWarnings ?? message.safetyWarnings,
     safetyStatus: payload.safetyStatus ?? message.safetyStatus,
+    safetyCheck: payload.safetyCheck ?? message.safetyCheck,
     blocks: payload.blocks ?? message.blocks,
     confidence: payload.confidence ?? message.confidence,
     answerValidation: payload.answerValidation ?? message.answerValidation,
