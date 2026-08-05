@@ -167,6 +167,8 @@ function safetyIssueText(issue: string, t: Translate): string {
         'safetySourceNotApproved',
         'The configured research source is not clinically approved for deterministic warnings.',
       );
+    case 'cross_reactivity_not_clinically_approved':
+      return t('safetyCrossReactivityNotApproved', 'The cross-reactivity rules are not clinically approved.');
     case 'source_unavailable':
       return t('safetySourceUnavailable', 'No medication-safety reference source was available.');
     case 'source_retired':

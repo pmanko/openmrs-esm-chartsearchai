@@ -696,7 +696,7 @@ describe('AiResponsePanel safety warnings', () => {
             execution_complete: true,
           },
           identity_confidence: 'limited',
-          issues: ['source_not_clinically_approved', 'mapping_incomplete'],
+          issues: ['source_not_clinically_approved', 'cross_reactivity_not_clinically_approved', 'mapping_incomplete'],
         }}
         auditLogId={42}
         error={null}
@@ -708,6 +708,7 @@ describe('AiResponsePanel safety warnings', () => {
     const summary = screen.getByTestId('safety-check-summary');
     expect(summary).toHaveTextContent('Check details');
     expect(summary).toHaveTextContent('research source is not clinically approved');
+    expect(summary).toHaveTextContent('cross-reactivity rules are not clinically approved');
     expect(summary).toHaveTextContent('Not every active medication could be mapped');
     expect(summary).toHaveTextContent('Source: chartsearchai-research-seed-v1 (1)');
   });
