@@ -1011,7 +1011,29 @@ describe('AiResponsePanel answer-validation lifecycle', () => {
     expect(screen.getByTestId('answer-validation-summary')).toHaveTextContent(
       'One unsupported date was removed from the answer.',
     );
+    expect(screen.getByTestId('answer-validation-summary')).toHaveTextContent('What changed');
+    expect(screen.getByTestId('answer-validation-summary')).toHaveAttribute('role', 'note');
     expect(screen.getByText('Updated after check')).not.toHaveAttribute('title');
+  });
+
+  it.each([
+    ['checked', 'Check summary'],
+    ['needs_review', 'Why review is needed'],
+    ['unavailable', 'Check status'],
+  ] as const)('labels the %s summary for scanning', (status, heading) => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        answerValidation={{
+          status,
+          label: 'Answer check',
+          summary: 'Visible review detail.',
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('answer-validation-summary')).toHaveTextContent(heading);
+    expect(screen.getByText('Visible review detail.')).toBeVisible();
   });
 
   it('discloses the original answer after a validation edit', () => {

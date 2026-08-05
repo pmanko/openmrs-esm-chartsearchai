@@ -300,15 +300,29 @@ const AnswerValidationBadge: React.FC<{ validation: AiAnswerValidation }> = ({ v
 };
 
 const AnswerValidationSummary: React.FC<{ validation?: AiAnswerValidation }> = ({ validation }) => {
+  const { t } = useTranslation();
   const summary = validation?.summary?.trim();
   const status = validation?.status;
   if (!summary || !status) {
     return null;
   }
   const className = styles[`answerValidationSummary_${status}`] ?? styles.answerValidationSummary_unavailable;
+  const heading =
+    status === 'edited'
+      ? t('answerCheckChanges', 'What changed')
+      : status === 'needs_review'
+        ? t('answerCheckReviewReason', 'Why review is needed')
+        : status === 'checking' || status === 'unavailable'
+          ? t('answerCheckStatus', 'Check status')
+          : t('answerCheckSummary', 'Check summary');
   return (
-    <div className={`${styles.answerValidationSummary} ${className}`} data-testid="answer-validation-summary">
-      {summary}
+    <div
+      className={`${styles.answerValidationSummary} ${className}`}
+      data-testid="answer-validation-summary"
+      role="note"
+    >
+      <div className={styles.answerValidationSummaryHeading}>{heading}</div>
+      <div className={styles.answerValidationSummaryBody}>{summary}</div>
     </div>
   );
 };

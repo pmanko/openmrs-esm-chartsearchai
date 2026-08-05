@@ -73,35 +73,53 @@
 }
 
 .answerValidationSummary {
-  @include type.type-style('body-compact-01');
   margin: layout.$spacing-02 0 layout.$spacing-03;
-  padding: layout.$spacing-02 layout.$spacing-03;
+  padding: layout.$spacing-03 layout.$spacing-04;
+  border: 1px solid colors.$gray-30;
   border-left: 3px solid colors.$gray-30;
   color: colors.$gray-80;
   overflow-wrap: anywhere;
 }
 
+.answerValidationSummaryHeading {
+  @include type.type-style('label-01');
+  color: colors.$gray-90;
+  font-weight: 600;
+  margin-bottom: layout.$spacing-02;
+}
+
+.answerValidationSummaryBody {
+  @include type.type-style('body-01');
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
 .answerValidationSummary_checking {
+  border-color: colors.$blue-20;
   border-left-color: colors.$blue-40;
   background: colors.$blue-10;
 }
 
 .answerValidationSummary_checked {
+  border-color: colors.$green-20;
   border-left-color: colors.$green-40;
   background: colors.$green-10;
 }
 
 .answerValidationSummary_edited {
+  border-color: colors.$yellow-20;
   border-left-color: colors.$yellow-30;
   background: colors.$yellow-10;
 }
 
 .answerValidationSummary_needs_review {
+  border-color: colors.$red-20;
   border-left-color: colors.$red-60;
   background: colors.$red-10;
 }
 
 .answerValidationSummary_unavailable {
+  border-color: colors.$gray-30;
   border-left-color: colors.$gray-30;
   background: colors.$gray-10;
 }
