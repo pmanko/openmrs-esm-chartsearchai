@@ -61,9 +61,9 @@ describe('ProviderPicker', () => {
     mockFetch.mockResolvedValueOnce(SINGLE);
     const { container } = render(<ProviderPicker />);
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+    await waitFor(() => expect(chatSessionStore.getState().selectedProviderId).toBe('bundled'));
+    expect(mockFetch).toHaveBeenCalledOnce();
     expect(container).toBeEmptyDOMElement();
-    expect(chatSessionStore.getState().selectedProviderId).toBe('bundled');
   });
 
   it('shows the provider menu with the default marked when multiple providers exist', async () => {

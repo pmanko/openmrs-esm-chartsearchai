@@ -46,9 +46,8 @@ const ProviderPicker: React.FC<ProviderPickerProps> = ({ onSwitched }) => {
   );
 
   // The picker reflects an explicit selection when it is still available;
-  // otherwise it shows the backend's advertised default. It never writes a
-  // selection on load, so an untouched picker leaves the request provider-less
-  // and the backend applies its own default.
+  // otherwise it shows the backend's advertised default. The effect below records
+  // that effective default in shared state for provider-specific controls.
   const effectiveProviderId = useMemo(() => {
     if (selectedProviderId && availableProviders.some((provider) => provider.id === selectedProviderId)) {
       return selectedProviderId;
