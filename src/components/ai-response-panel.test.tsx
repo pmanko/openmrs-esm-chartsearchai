@@ -697,6 +697,26 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.queryByText('Limited safety check')).not.toBeInTheDocument();
   });
 
+  it('does not repeat a drug name already present in a warning detail', () => {
+    render(
+      <AiResponsePanel
+        answer="Ibuprofen should be avoided."
+        references={[]}
+        safetyWarnings={[
+          { type: 'contraindication', drug: 'Ibuprofen', detail: 'Ibuprofen is contraindicated for this patient.' },
+        ]}
+        safetyStatus="checked"
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Ibuprofen is contraindicated for this patient.')).toBeInTheDocument();
+    expect(screen.queryByText(/Ibuprofen: Ibuprofen/)).not.toBeInTheDocument();
+  });
+
   it('surfaces an unrecognised warning type with the fallback label (never drops a warning)', () => {
     render(
       <AiResponsePanel

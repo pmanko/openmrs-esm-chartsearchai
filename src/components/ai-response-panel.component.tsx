@@ -684,14 +684,18 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               )}
               {safetyWarnings?.map((warning, i) => {
                 const { tagType, label } = safetyWarningTag(warning.type, t);
+                const detail = warning.detail.trim();
+                const drug = warning.drug.trim();
+                const warningText =
+                  drug && !detail.toLocaleLowerCase().startsWith(drug.toLocaleLowerCase())
+                    ? `${drug}: ${detail}`
+                    : detail;
                 return (
                   <span key={`${warning.type}-${warning.drug}-${i}`} className={styles.safetyWarningItem}>
                     <Tag type={tagType} size="sm" className={styles.safetyWarningBadge}>
                       {label}
                     </Tag>
-                    <span className={styles.safetyWarningText}>
-                      {warning.drug ? `${warning.drug}: ${warning.detail}` : warning.detail}
-                    </span>
+                    <span className={styles.safetyWarningText}>{warningText}</span>
                   </span>
                 );
               })}

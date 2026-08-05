@@ -112,6 +112,32 @@ describe('ProviderPicker', () => {
     expect(screen.queryByRole('menuitemradio', { name: /Med-Agent Hub/i })).not.toBeInTheDocument();
   });
 
+  it('keeps ready providers selectable when the advertised default is unavailable', async () => {
+    mockFetch.mockResolvedValueOnce({
+      defaultProvider: 'hub',
+      pickerVisible: true,
+      providers: [
+        provider({ default: false }),
+        provider({
+          id: 'hub',
+          label: 'Med-Agent Hub',
+          default: true,
+          ready: false,
+          unavailableReason: 'hub_not_configured',
+        }),
+      ],
+    });
+    render(<ProviderPicker />);
+    await openMenu();
+
+    expect(screen.getByRole('menuitemradio', { name: /Bundled \(local\)/i })).toBeChecked();
+    expect(screen.getByRole('menuitem', { name: /Med-Agent Hub.*unavailable/i })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(chatSessionStore.getState().selectedProviderId).toBe('bundled');
+  });
+
   it('does not start a new conversation when re-selecting the current provider', async () => {
     mockFetch.mockResolvedValueOnce(DUAL);
     const onSwitched = vi.fn();
