@@ -283,15 +283,33 @@ const inDepthValidation = (validation: AiInDepth['validation']): AiAnswerValidat
   if (!status || !validationLabelFallback[status]) {
     return undefined;
   }
-  return { status, label: validationLabelFallback[status] };
+  return {
+    status,
+    label: validationLabelFallback[status],
+    summary: typeof validation.summary === 'string' ? validation.summary : undefined,
+  };
 };
 
 const AnswerValidationBadge: React.FC<{ validation: AiAnswerValidation }> = ({ validation }) => {
   const className = styles[`answerValidation_${validation.status}`] ?? styles.answerValidation_unavailable;
   return (
-    <span className={`${styles.answerValidation} ${className}`} title={validation.summary ?? ''}>
+    <span className={`${styles.answerValidation} ${className}`}>
       {validation.label || validationLabelFallback[validation.status] || 'Check unavailable'}
     </span>
+  );
+};
+
+const AnswerValidationSummary: React.FC<{ validation?: AiAnswerValidation }> = ({ validation }) => {
+  const summary = validation?.summary?.trim();
+  const status = validation?.status;
+  if (!summary || !status) {
+    return null;
+  }
+  const className = styles[`answerValidationSummary_${status}`] ?? styles.answerValidationSummary_unavailable;
+  return (
+    <div className={`${styles.answerValidationSummary} ${className}`} data-testid="answer-validation-summary">
+      {summary}
+    </div>
   );
 };
 
@@ -325,6 +343,7 @@ const ConfidenceSection: React.FC<{
         {label} {answerValidation && <AnswerValidationBadge validation={answerValidation} />}{' '}
         {section && <ConfidenceChip level={level} />}
       </div>
+      <AnswerValidationSummary validation={answerValidation} />
       {level === 'red' ? (
         <>
           {note && <div className={`${styles.caveat} ${styles.caveatRed}`}>{note}</div>}

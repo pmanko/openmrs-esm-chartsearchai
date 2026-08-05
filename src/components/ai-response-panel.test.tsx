@@ -976,6 +976,24 @@ describe('AiResponsePanel answer-validation lifecycle', () => {
     expect(screen.getByText(label)).toBeInTheDocument();
   });
 
+  it('renders the answer-check summary as visible content instead of a badge tooltip', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        answerValidation={{
+          status: 'edited',
+          label: 'Updated after check',
+          summary: 'One unsupported date was removed from the answer.',
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('answer-validation-summary')).toHaveTextContent(
+      'One unsupported date was removed from the answer.',
+    );
+    expect(screen.getByText('Updated after check')).not.toHaveAttribute('title');
+  });
+
   it('discloses the original answer after a validation edit', () => {
     render(
       <AiResponsePanel

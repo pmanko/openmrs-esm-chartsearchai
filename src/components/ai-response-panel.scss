@@ -72,6 +72,40 @@
   border: 1px solid colors.$gray-30;
 }
 
+.answerValidationSummary {
+  @include type.type-style('body-compact-01');
+  margin: layout.$spacing-02 0 layout.$spacing-03;
+  padding: layout.$spacing-02 layout.$spacing-03;
+  border-left: 3px solid colors.$gray-30;
+  color: colors.$gray-80;
+  overflow-wrap: anywhere;
+}
+
+.answerValidationSummary_checking {
+  border-left-color: colors.$blue-40;
+  background: colors.$blue-10;
+}
+
+.answerValidationSummary_checked {
+  border-left-color: colors.$green-40;
+  background: colors.$green-10;
+}
+
+.answerValidationSummary_edited {
+  border-left-color: colors.$yellow-30;
+  background: colors.$yellow-10;
+}
+
+.answerValidationSummary_needs_review {
+  border-left-color: colors.$red-60;
+  background: colors.$red-10;
+}
+
+.answerValidationSummary_unavailable {
+  border-left-color: colors.$gray-30;
+  background: colors.$gray-10;
+}
+
 .caveat {
   border-radius: 6px;
   padding: layout.$spacing-03 layout.$spacing-04;
