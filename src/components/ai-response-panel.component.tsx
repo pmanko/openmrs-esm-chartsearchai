@@ -335,7 +335,7 @@ const ConfidenceSection: React.FC<{
           <div className={styles.ans}>{rendered}</div>
           {note && (
             <details className={styles.collapse}>
-              <summary>show review note</summary>
+              <summary>{t('showReviewNote', 'Show review note')}</summary>
               <div className={`${styles.caveat} ${styles.caveatYellow}`}>{note}</div>
             </details>
           )}
@@ -671,7 +671,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                       {label}
                     </Tag>
                     <span className={styles.safetyWarningText}>
-                      {warning.type}:{warning.drug}: {warning.detail}
+                      {warning.drug ? `${warning.drug}: ${warning.detail}` : warning.detail}
                     </span>
                   </span>
                 );

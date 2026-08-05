@@ -22,6 +22,7 @@ const seedSession = () =>
     },
     sessionUuidByPatient: { 'patient-1': 'server-session-handle-1' },
     selectedProfileId: 'single-e4b-checked',
+    selectedProviderId: 'hub',
   });
 
 beforeEach(() => {
@@ -30,6 +31,7 @@ beforeEach(() => {
     sessionUuidByPatient: {},
     selectedProfileId: null,
     profileDiscoveryStatus: 'loading',
+    selectedProviderId: null,
   });
   sessionStore.setState({ loaded: false, session: null });
 });
@@ -53,6 +55,7 @@ describe('chatSessionStore logout cleanup', () => {
     expect(state.messagesByPatient).toEqual({});
     expect(state.sessionUuidByPatient).toEqual({});
     expect(state.selectedProfileId).toBeNull();
+    expect(state.selectedProviderId).toBeNull();
     unsubscribe();
   });
 
@@ -76,6 +79,7 @@ describe('chatSessionStore logout cleanup', () => {
     expect(state.messagesByPatient).toEqual({});
     expect(state.sessionUuidByPatient).toEqual({});
     expect(state.selectedProfileId).toBeNull();
+    expect(state.selectedProviderId).toBeNull();
     unsubscribe();
   });
 
@@ -97,6 +101,7 @@ describe('chatSessionStore logout cleanup', () => {
     expect(state.messagesByPatient).not.toEqual({});
     expect(state.sessionUuidByPatient).not.toEqual({});
     expect(state.selectedProfileId).not.toBeNull();
+    expect(state.selectedProviderId).toBe('hub');
     unsubscribe();
   });
 });

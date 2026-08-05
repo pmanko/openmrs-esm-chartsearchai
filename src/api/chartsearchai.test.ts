@@ -1,6 +1,6 @@
 import { TextEncoder, TextDecoder } from 'util';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { chatPatientChartStream } from './chartsearchai';
+import { chatPatientChartStream, SESSION_EXPIRED_ERROR_CODE } from './chartsearchai';
 
 // Polyfill for jsdom
 (globalThis as unknown as Record<string, unknown>).TextEncoder = TextEncoder;
@@ -133,6 +133,20 @@ describe('chatPatientChartStream', () => {
       'A product profile is required',
     );
     expect(window.fetch).not.toHaveBeenCalled();
+  });
+
+  it('emits the localizable session-expired code for an authentication redirect', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce({
+      type: 'opaqueredirect',
+      status: 0,
+    } as Response);
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'turn-1', 'bundled');
+    await flushPromises();
+
+    expect(cb.onError).toHaveBeenCalledWith(SESSION_EXPIRED_ERROR_CODE);
+    expect(cb.onDone).not.toHaveBeenCalled();
   });
 
   it("maps the answer_done event's `model` field onto resolvedModel", async () => {

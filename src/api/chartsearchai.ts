@@ -283,7 +283,7 @@ export function chatPatientChartStream(
     })
     .then(async (response) => {
       if (response.type === 'opaqueredirect' || response.status === 0) {
-        callbacks.onError('Your session has expired. Please log in again.');
+        callbacks.onError(SESSION_EXPIRED_ERROR_CODE);
         return;
       }
 

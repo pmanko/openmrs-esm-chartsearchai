@@ -577,8 +577,10 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.getByText('Safety checks:')).toBeInTheDocument();
     expect(screen.getByText('Dose')).toBeInTheDocument();
     expect(screen.getByText('Interaction')).toBeInTheDocument();
+    expect(screen.getByText(/Ibuprofen: stated dose/)).toBeInTheDocument();
     expect(screen.getByText(/exceeds the 1200 mg\/day maximum/)).toBeInTheDocument();
     expect(screen.getByText(/interacts with active order warfarin/)).toBeInTheDocument();
+    expect(screen.queryByText(/overdose:Ibuprofen/)).not.toBeInTheDocument();
   });
 
   it('renders a contraindication warning with the Contraindication label', () => {
