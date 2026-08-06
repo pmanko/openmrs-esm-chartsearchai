@@ -618,6 +618,9 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                       </span>
                     )}
                   </div>
+                  {inDepth.status === 'needs_review' && (
+                    <AnswerValidationSummary validation={inDepthValidation(inDepth.validation)} />
+                  )}
                   <div
                     className={`${styles.caveat} ${
                       inDepth.status === 'needs_review' ? styles.caveatRed : styles.caveatYellow

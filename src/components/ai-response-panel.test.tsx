@@ -1088,6 +1088,10 @@ describe('AiResponsePanel staged in-depth status', () => {
           status: 'needs_review',
           answer: '',
           error: 'All claims were withheld.',
+          validation: {
+            status: 'needs_review',
+            summary: 'The appointment claim used a date that is not in the patient record.',
+          },
           reviewDraft: 'The model draft claimed a future appointment [1].',
           reviewReferences: stagedBase.references,
         }}
@@ -1096,6 +1100,8 @@ describe('AiResponsePanel staged in-depth status', () => {
 
     expect(container.querySelector('[data-indepth-status="needs_review"]')).toBeInTheDocument();
     expect(screen.getByText('Needs review')).toBeInTheDocument();
+    expect(screen.getByText('Why review is needed')).toBeVisible();
+    expect(screen.getByText(/appointment claim used a date that is not in the patient record/i)).toBeVisible();
     expect(screen.getByText('All claims were withheld.')).toBeInTheDocument();
     const removedClaimsSummary = screen.getByText('Removed In-Depth claims');
     const removedClaims = removedClaimsSummary.closest('details');

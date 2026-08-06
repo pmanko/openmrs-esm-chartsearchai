@@ -145,6 +145,7 @@ export interface AiInDepth {
   validation?: {
     status?: 'checked' | 'edited' | 'needs_review' | 'unavailable';
     review_status?: 'checked' | 'edited' | 'needs_review' | 'unavailable';
+    summary?: string;
     [key: string]: unknown;
   };
   /** Pre-check model claims rendered for review. Never the shipped answer. */
