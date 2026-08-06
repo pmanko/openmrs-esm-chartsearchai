@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '@openmrs/esm-framework';
 import {
   type AiBlock,
@@ -126,6 +126,10 @@ function hydrateMessages(history: ChatHistoryMessage[]): ChatMessage[] {
         pending.inDepth = interruptInDepth(m.inDepth);
         pending.references = m.references ?? [];
         pending.auditLogId = m.auditLogId;
+        if (m.terminalState === 'turn_error') {
+          pending.phase = 'error';
+          pending.error = m.problemCode ?? 'provider_failure';
+        }
         out.push(pending);
         pending = null;
       }
@@ -186,7 +190,9 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
   const messages: ChatMessage[] = patientUuid ? (messagesByPatient[patientUuid] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES;
   const abortControllerRef = useRef<AbortController | null>(null);
   const inFlightMessageIdRef = useRef<string | null>(null);
+  const sessionStartRef = useRef<Promise<void> | null>(null);
   const isMountedRef = useRef(true);
+  const [isStartingSession, setIsStartingSession] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -218,13 +224,8 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           return;
         }
         setSessionUuid(patientUuid, response.session ?? null);
-        // The picker's displayed value (selectedProviderId) is otherwise never written except by
-        // an explicit user click — nothing previously synced it to the conversation actually
-        // restored here. Left alone, a reload could show one provider's conversation while the
-        // picker still displayed a stale different one, so the next question would carry the
-        // wrong provider id alongside this (now-mismatched) session — and since the backend
-        // correctly closes/creates a new conversation on that mismatch, the UI would silently
-        // start a second conversation without ever visibly separating it from the first.
+        // The picker must reflect the provider bound to the restored conversation. Otherwise the
+        // next question would request a different provider and correctly start a new conversation.
         if (response.provider) {
           chatSessionStore.setState({ selectedProviderId: response.provider });
         }
@@ -281,26 +282,37 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
   }, [patientUuid]);
 
   const startNewChatSession = useCallback((patientUuid: string) => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    inFlightMessageIdRef.current = null;
-    updateMessages(patientUuid, () => []);
-    setSessionUuid(patientUuid, null);
+    if (sessionStartRef.current) return;
     const providerId = chatSessionStore.getState().selectedProviderId ?? undefined;
-    startNewChat(patientUuid, providerId)
+    setIsStartingSession(true);
+    const pending = startNewChat(patientUuid, providerId)
       .then((response) => {
         if (!isMountedRef.current) return;
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+        inFlightMessageIdRef.current = null;
+        updateMessages(patientUuid, () => []);
         setSessionUuid(patientUuid, response.session ?? null);
       })
       .catch((err) => {
         console.warn('[useChartSearchAi] startNewChat failed', err);
+      })
+      .finally(() => {
+        if (sessionStartRef.current === pending) {
+          sessionStartRef.current = null;
+        }
+        if (isMountedRef.current) {
+          setIsStartingSession(false);
+        }
       });
+    sessionStartRef.current = pending;
   }, []);
 
   const submitQuestion = useCallback(
     (patientUuid: string, question: string) => {
+      if (sessionStartRef.current) return;
       const state = chatSessionStore.getState();
       const selectedProviderId = state.selectedProviderId ?? undefined;
       const discoveryStatus = state.profileDiscoveryStatus;
@@ -396,6 +408,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
+          if (prev[idx].phase === 'error') return prev;
           const updated = [...prev];
           updated[idx] = applyTurnEnvelope(updated[idx], response, 'complete');
           return updated;
@@ -437,6 +450,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
+          if (isTerminal(prev[idx].phase)) return prev;
           const updated = [...prev];
           const phase = response.answerValidation?.status === 'checking' ? 'checking' : 'settled';
           // Do NOT synthesize a pending inDepth here when the response omits one. A provider
@@ -459,8 +473,20 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
+          if (isTerminal(prev[idx].phase)) return prev;
           const updated = [...prev];
           updated[idx] = applyTurnEnvelope(updated[idx], response, 'settled');
+          return updated;
+        });
+      };
+
+      const evidenceUpdated = (response: AiSearchResponse) => {
+        if (!isMountedRef.current) return;
+        updateMessages(patientUuid, (prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId);
+          if (idx === -1 || isTerminal(prev[idx].phase)) return prev;
+          const updated = [...prev];
+          updated[idx] = applyTurnEnvelope(updated[idx], response, updated[idx].phase);
           return updated;
         });
       };
@@ -470,6 +496,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
+          if (isTerminal(prev[idx].phase)) return prev;
           const updated = [...prev];
           updated[idx] = applyTurnEnvelope(
             updated[idx],
@@ -488,6 +515,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
+          if (isTerminal(prev[idx].phase)) return prev;
           const updated = [...prev];
           const inDepth = payload.inDepth;
           updated[idx] = applyTurnEnvelope(
@@ -495,7 +523,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             inDepth
               ? { ...payload, inDepth: { ...inDepth, answer: stripInDepthHeader(inDepth.answer ?? '') } }
               : payload,
-            'complete',
+            'settled',
           );
           return updated;
         });
@@ -506,8 +534,9 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         updateMessages(patientUuid, (prev) => {
           const idx = prev.findIndex((m) => m.id === messageId);
           if (idx === -1) return prev;
+          if (isTerminal(prev[idx].phase)) return prev;
           const updated = [...prev];
-          // The direct answer is still available; only the background in-depth failed → terminal.
+          // The direct answer remains available; the terminal marker still closes the turn.
           const inDepth = payload.inDepth;
           updated[idx] = applyTurnEnvelope(
             updated[idx],
@@ -520,7 +549,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
                       : { ...inDepth, status: 'failed' },
                 }
               : payload,
-            'complete',
+            'settled',
           );
           return updated;
         });
@@ -550,6 +579,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
             },
             onAnswerDone: answerDone,
             onAnswerValidation: answerValidation,
+            onEvidenceUpdated: evidenceUpdated,
             onInDepthPending: inDepthPending,
             onInDepthDone: inDepthDone,
             onInDepthError: inDepthError,
@@ -558,7 +588,6 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
           },
           abortController,
           selectedProfileId,
-          messageId,
           selectedProviderId,
         );
       } catch (err) {
@@ -582,9 +611,9 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
   // Only the last message can ever be in flight; a new turn either blocks (answer not yet settled)
   // or preempts the trailing in-depth, so checking just the tail is sound. The composer locks only
   // while the direct answer is being produced or checked (answering/checking) — a settled answer unlocks it
-  // even while in-depth still streams.
+  // even while In-Depth or terminal settlement is still pending.
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
-  const isAwaitingAnswer = lastMessage ? phaseIsAwaitingAnswer(lastMessage.phase) : false;
+  const isAwaitingAnswer = isStartingSession || (lastMessage ? phaseIsAwaitingAnswer(lastMessage.phase) : false);
 
   return {
     messages,

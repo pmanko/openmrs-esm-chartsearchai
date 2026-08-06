@@ -1,5 +1,6 @@
 import { TextEncoder, TextDecoder } from 'util';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type MockInstance } from 'vitest';
+import conformance from '../conformance/dual-provider-conformance.v1.json';
 import { chatPatientChartStream, SESSION_EXPIRED_ERROR_CODE } from './chartsearchai';
 
 // Polyfill for jsdom
@@ -68,6 +69,7 @@ describe('chatPatientChartStream', () => {
       onSession: vi.fn(),
       onAnswerDone: vi.fn(),
       onAnswerValidation: vi.fn(),
+      onEvidenceUpdated: vi.fn(),
       onInDepthPending: vi.fn(),
       onInDepthDone: vi.fn(),
       onInDepthError: vi.fn(),
@@ -80,20 +82,67 @@ describe('chatPatientChartStream', () => {
     return JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
   }
 
-  it('sends only the selected product profile as the inference override', async () => {
+  it.each(conformance.provider_lifecycle.filter((testCase) => testCase.expected === 'accept'))(
+    'consumes the canonical lifecycle fixture $id',
+    async (testCase) => {
+      const cb = makeCallbacks();
+      const payload: Record<string, string> = {
+        turn_started: '{"session":"sess-1","messageId":"m1","provider":"hub"}',
+        answer_done: '{"answer":"Answer.","references":[],"messageId":"m1"}',
+        answer_validation:
+          '{"answer":"Answer.","references":[],"messageId":"m1","answerValidation":{"status":"checked","label":"Checked"}}',
+        indepth_pending: '{"messageId":"m1","inDepth":{"status":"pending","answer":""}}',
+        indepth_done: '{"messageId":"m1","inDepth":{"status":"complete","answer":"Detail."}}',
+        turn_done: '{"answer":"Answer.","references":[],"session":"sess-1","messageId":"m1","provider":"hub"}',
+        turn_error: '{"problemCode":"provider_unavailable"}',
+      };
+      const chunks = testCase.events.map((event) => `event:${event}\ndata: ${payload[event]}\n\n`);
+      fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce(mockStreamResponse(chunks));
+
+      chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked', 'hub');
+      await flushPromises();
+
+      if (testCase.events.includes('turn_error')) {
+        expect(cb.onError).toHaveBeenCalledWith('provider_unavailable');
+        expect(cb.onDone).not.toHaveBeenCalled();
+      } else {
+        expect(cb.onDone).toHaveBeenCalledOnce();
+        expect(cb.onError).not.toHaveBeenCalled();
+      }
+      if (testCase.events.includes('answer_done')) {
+        expect(cb.onAnswerDone).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
+  it('rejects terminal success that omits the final answer envelope', async () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
       .mockResolvedValueOnce(mockStreamResponse(['event:turn_done\ndata: {"session":"sess-1"}\n\n']));
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1', 'hub');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked', 'hub');
+    await flushPromises();
+
+    expect(cb.onDone).not.toHaveBeenCalled();
+    expect(cb.onError).toHaveBeenCalledWith('Failed to parse final response');
+  });
+
+  it('sends only the selected product profile as the inference override', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse(['event:turn_done\ndata: {"answer":"","references":[],"session":"sess-1"}\n\n']),
+      );
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'hub');
     await flushPromises();
 
     expect(sentBody()).toMatchObject({
       patient: 'uuid-1',
       question: 'q?',
       profile: 'team-med-checked',
-      requestId: 'turn-1',
     });
     expect(sentBody()).not.toHaveProperty('endpointUrl');
     expect(sentBody()).not.toHaveProperty('modelName');
@@ -104,9 +153,11 @@ describe('chatPatientChartStream', () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
-      .mockResolvedValueOnce(mockStreamResponse(['event:turn_done\ndata: {"session":"s"}\n\n']));
+      .mockResolvedValueOnce(
+        mockStreamResponse(['event:turn_done\ndata: {"answer":"","references":[],"session":"s"}\n\n']),
+      );
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'turn-1', 'hub');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'hub');
     await flushPromises();
 
     expect(sentBody()).toMatchObject({ provider: 'hub' });
@@ -116,9 +167,11 @@ describe('chatPatientChartStream', () => {
     const cb = makeCallbacks();
     fetchSpy = vi
       .spyOn(window, 'fetch')
-      .mockResolvedValueOnce(mockStreamResponse(['event:turn_done\ndata: {"session":"s"}\n\n']));
+      .mockResolvedValueOnce(
+        mockStreamResponse(['event:turn_done\ndata: {"answer":"","references":[],"session":"s"}\n\n']),
+      );
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'turn-1', 'bundled');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'bundled');
     await flushPromises();
 
     expect(sentBody()).toMatchObject({ provider: 'bundled' });
@@ -129,7 +182,7 @@ describe('chatPatientChartStream', () => {
     const cb = makeCallbacks();
     fetchSpy = vi.spyOn(window, 'fetch');
 
-    expect(() => chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, '', undefined, 'hub')).toThrow(
+    expect(() => chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, '', 'hub')).toThrow(
       'A product profile is required',
     );
     expect(window.fetch).not.toHaveBeenCalled();
@@ -142,7 +195,7 @@ describe('chatPatientChartStream', () => {
       status: 0,
     } as Response);
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'turn-1', 'bundled');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'bundled');
     await flushPromises();
 
     expect(cb.onError).toHaveBeenCalledWith(SESSION_EXPIRED_ERROR_CODE);
@@ -156,11 +209,11 @@ describe('chatPatientChartStream', () => {
       .mockResolvedValueOnce(
         mockStreamResponse([
           'event:answer_done\ndata: {"answer":"ok","references":[],"model":"med-agent-team"}\n\n',
-          'event:turn_done\ndata: {"session":"sess-1"}\n\n',
+          'event:turn_done\ndata: {"answer":"ok","references":[],"model":"med-agent-team","session":"sess-1"}\n\n',
         ]),
       );
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked', undefined, 'hub');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked', 'hub');
     await flushPromises();
 
     expect(cb.onAnswerDone).toHaveBeenCalledWith(expect.objectContaining({ resolvedModel: 'med-agent-team' }));
@@ -177,11 +230,11 @@ describe('chatPatientChartStream', () => {
           'event:answer_validation\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","answerValidation":{"status":"edited","label":"Updated after check","originalAnswer":"Direct answer [1]","originalReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
           'event:indepth_pending\ndata: {"messageId":"m1","inDepth":{"status":"pending","answer":""}}\n\n',
           'event:indepth_done\ndata: {"inDepth":{"status":"complete","answer":"- background","reviewDraft":"- rejected [1]","reviewReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
-          'event:turn_done\ndata: {"session":"sess-1","messageId":"m1","provider":"hub"}\n\n',
+          'event:turn_done\ndata: {"answer":"Direct answer checked","references":[],"messageId":"m1","model":"med-agent-team-high-validated","provider":"hub","session":"sess-1","answerValidation":{"status":"edited","label":"Updated after check","originalAnswer":"Direct answer [1]","originalReferences":[{"index":1,"resourceType":"Observation"}]},"inDepth":{"status":"complete","answer":"- background","reviewDraft":"- rejected [1]","reviewReferences":[{"index":1,"resourceType":"Observation"}]}}\n\n',
         ]),
       );
 
-    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', undefined, 'hub');
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'team-med-checked', 'hub');
     await flushPromises();
 
     expect(sentBody()).toMatchObject({ profile: 'team-med-checked' });
@@ -227,6 +280,50 @@ describe('chatPatientChartStream', () => {
     expect(cb.onError).not.toHaveBeenCalled();
   });
 
+  it('delivers final bundled evidence updates before the terminal marker', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse([
+          'event:answer_done\ndata: {"answer":"A [1].","references":[{"index":1,"groundingStatus":"checking"}],"messageId":"m1"}\n\n',
+          'event:evidence_updated\ndata: {"answer":"A [1].","references":[{"index":1,"resolutionStatus":"resolved","groundingStatus":"verified"}],"messageId":"m1"}\n\n',
+          'event:turn_done\ndata: {"answer":"A [1].","references":[{"index":1,"resolutionStatus":"resolved","groundingStatus":"verified"}],"session":"sess-1","messageId":"m1","provider":"bundled"}\n\n',
+        ]),
+      );
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'bundled');
+    await flushPromises();
+
+    expect(cb.onEvidenceUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        references: [expect.objectContaining({ groundingStatus: 'verified' })],
+      }),
+    );
+    expect(cb.onError).not.toHaveBeenCalled();
+  });
+
+  it('ignores lifecycle events after a terminal marker', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse([
+          'event:turn_done\ndata: {"answer":"A","references":[],"session":"sess-1","messageId":"m1","provider":"bundled"}\n\n',
+          'event:evidence_updated\ndata: {"references":[{"index":1,"groundingStatus":"verified"}]}\n\n',
+          'event:indepth_pending\ndata: {"inDepth":{"status":"pending","answer":""}}\n\n',
+        ]),
+      );
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, undefined, 'bundled');
+    await flushPromises();
+
+    expect(cb.onDone).toHaveBeenCalledOnce();
+    expect(cb.onEvidenceUpdated).not.toHaveBeenCalled();
+    expect(cb.onInDepthPending).not.toHaveBeenCalled();
+    expect(cb.onError).not.toHaveBeenCalled();
+  });
+
   it('rejects the retired flat in-depth event wire', async () => {
     const cb = makeCallbacks();
     fetchSpy = vi
@@ -242,6 +339,25 @@ describe('chatPatientChartStream', () => {
     expect(cb.onError).toHaveBeenCalledWith('Failed to parse in-depth response');
   });
 
+  it('treats a malformed clinical event as terminal even if turn_done follows', async () => {
+    const cb = makeCallbacks();
+    fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValueOnce(
+        mockStreamResponse([
+          'event:answer_validation\ndata: {not-json}\n\n',
+          'event:turn_done\ndata: {"answer":"must not replace error","references":[]}\n\n',
+        ]),
+      );
+
+    chatPatientChartStream('uuid-1', null, 'q?', cb, undefined, 'single-e4b-checked', 'hub');
+    await flushPromises();
+
+    expect(cb.onError).toHaveBeenCalledOnce();
+    expect(cb.onError).toHaveBeenCalledWith('Failed to parse answer validation response');
+    expect(cb.onDone).not.toHaveBeenCalled();
+  });
+
   // ── canonical turn lifecycle wire (turn_started / turn_done / turn_error) ──
 
   it('finalizes on turn_done and preserves the staged answer', async () => {
@@ -251,7 +367,7 @@ describe('chatPatientChartStream', () => {
       .mockResolvedValueOnce(
         mockStreamResponse([
           'event:answer_done\ndata: {"answer":"Direct answer","references":[],"messageId":"m1"}\n\n',
-          'event:turn_done\ndata: {"session":"sess-1","messageId":"m1","provider":"hub"}\n\n',
+          'event:turn_done\ndata: {"answer":"Direct answer","references":[],"session":"sess-1","messageId":"m1","provider":"hub"}\n\n',
         ]),
       );
 
@@ -284,7 +400,7 @@ describe('chatPatientChartStream', () => {
         mockStreamResponse([
           'event:turn_started\ndata: {"session":"sess-42","messageId":"m1","provider":"hub"}\n\n',
           'event:answer_done\ndata: {"answer":"A","references":[],"messageId":"m1"}\n\n',
-          'event:turn_done\ndata: {"session":"sess-42","messageId":"m1","provider":"hub"}\n\n',
+          'event:turn_done\ndata: {"answer":"A","references":[],"session":"sess-42","messageId":"m1","provider":"hub"}\n\n',
         ]),
       );
 

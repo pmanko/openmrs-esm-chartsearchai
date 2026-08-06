@@ -52,7 +52,7 @@
   "restore": "Restore",
   "safetyCheckDetails": "Medication safety details",
   "safetyChecked": "Checked",
-  "safetyChecks": "Safety checks",
+  "safetyChecks": "Answer safety check",
   "safetyContraindication": "Contraindication",
   "safetyCrossReactivityDataInvalid": "The cross-reactivity reference data could not be read safely.",
   "safetyCrossReactivityDataPartiallyInvalid": "Some cross-reactivity reference records were invalid and ignored.",

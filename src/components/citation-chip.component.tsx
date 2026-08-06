@@ -7,6 +7,7 @@ import styles from './ai-response-panel.scss';
 
 /** Reference data, not patient data — has no chart tab to navigate to. */
 const RESOURCE_TYPE_DRUG_REFERENCE = 'drug_reference';
+const RESOURCE_TYPE_SAFETY_FINDING = 'safety_finding';
 
 const RESOURCE_TYPE_TO_CHART_PAGE: Record<string, string> = {
   obs: 'Results',
@@ -19,12 +20,17 @@ const RESOURCE_TYPE_TO_CHART_PAGE: Record<string, string> = {
 };
 
 export function isDrugReference(ref: AiReference): boolean {
-  return ref.resourceType.toLowerCase() === RESOURCE_TYPE_DRUG_REFERENCE;
+  const resourceType = ref.resourceType.toLowerCase();
+  return (
+    ref.group === 'reference' ||
+    resourceType === RESOURCE_TYPE_DRUG_REFERENCE ||
+    resourceType === RESOURCE_TYPE_SAFETY_FINDING
+  );
 }
 
 export function buildReferenceUrl(ref: AiReference, patientUuid: string): string | null {
   if (!patientUuid || isDrugReference(ref)) {
-    // Drug-reference citations are clinical reference data with no patient chart tab —
+    // Reference-group citations are clinical reference data with no patient chart tab —
     // they render as a non-navigating chip. Navigation to a detail panel is a follow-up.
     return null;
   }
@@ -46,7 +52,7 @@ interface CitationChipProps {
 
 /**
  * Inline citation chip. Navigating chips link to the patient chart page for the cited
- * record. Drug-reference citations are rendered as a non-navigating span with a tooltip
+ * record. Reference-group citations are rendered as a non-navigating span with a tooltip
  * indicating they are clinical reference data, not this patient's records.
  * Ungrounded citations (grounded=false) render with a ⚠ glyph and a warning title.
  */

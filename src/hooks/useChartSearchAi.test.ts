@@ -51,14 +51,32 @@ describe('useChartSearchAi', () => {
     expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-1');
   });
 
+  it('hydrates a failed terminal turn as an error with its persisted problem code', async () => {
+    mockFetchHistory.mockResolvedValueOnce({
+      session: 'srv-session-1',
+      messages: [
+        { messageId: 'request-1', role: 'user', content: 'First Q', createdAt: 1 },
+        {
+          messageId: 'turn-1',
+          role: 'assistant',
+          content: '',
+          terminalState: 'turn_error',
+          problemCode: 'provider_failure',
+          createdAt: 2,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0].id).toBe('request-1');
+    expect(result.current.messages[0].phase).toBe('error');
+    expect(result.current.messages[0].error).toBe('provider_failure');
+  });
+
   it("syncs selectedProviderId to the restored conversation's real provider on hydration", async () => {
-    // Regression guard: the picker reads selectedProviderId, and until this fix, nothing ever
-    // wrote it on hydration — so after a reload, the picker could keep showing a stale provider
-    // that has nothing to do with the conversation actually restored on screen. The next
-    // submitted question would then carry the WRONG provider alongside the restored session,
-    // and the backend (which correctly closes/creates a new conversation on a provider mismatch)
-    // would silently start a second, different conversation the UI never visibly separated from
-    // the first — a live-observed bug this test pins down.
+    // Hydration must synchronize the picker with the provider bound to the restored conversation.
     chatSessionStore.setState({ selectedProviderId: 'hub' });
     mockFetchHistory.mockResolvedValueOnce({
       session: 'srv-session-bundled',
@@ -164,7 +182,6 @@ describe('useChartSearchAi', () => {
       }),
       expect.any(AbortController),
       'single-e4b-checked',
-      expect.any(String),
       'hub',
     );
   });
@@ -208,7 +225,6 @@ describe('useChartSearchAi', () => {
       expect.any(Object),
       expect.any(AbortController),
       undefined,
-      expect.any(String),
       'bundled',
     );
     expect(result.current.messages[0].phase).toBe('answering');
@@ -260,19 +276,13 @@ describe('useChartSearchAi', () => {
       expect.any(Object),
       expect.any(AbortController),
       'single-e4b-checked',
-      expect.any(String),
       'hub',
     );
   });
 
   it('drops the prior conversation from view when the backend silently starts a new one', async () => {
-    // Live-observed bug: after a reload, the picker could show a stale provider unrelated to the
-    // restored conversation. Submitting with that wrong provider alongside the old session made
-    // the backend correctly refuse to write into the mismatched conversation and open a new one
-    // (ConversationServiceImpl.openOrCreate closes the old, creates a new) — but the frontend kept
-    // the old conversation's messages on screen, visually gluing two different providers' turns
-    // into one thread. onSession returning a DIFFERENT uuid than the turn was sent with is the
-    // signal that happened; the old turns must be dropped, not merged with the new one.
+    // A different session UUID indicates that the backend opened a new conversation, so turns
+    // from the prior conversation must not remain in the same visible thread.
     mockFetchHistory.mockResolvedValueOnce({
       session: 'srv-session-old-bundled',
       provider: 'bundled',
@@ -386,14 +396,8 @@ describe('useChartSearchAi', () => {
   });
 
   it('leaves inDepth unset on answer_done when the provider has no In-Depth capability at all', async () => {
-    // Live-observed bug: bundled never sends inDepth (it has no such capability -
-    // BundledClinicalAnswerProvider never advertises INDEPTH) and never follows up with an
-    // indepth_pending/indepth_done event either. A synthesized {status: 'pending'} placeholder
-    // here can therefore never resolve — a permanent "Preparing in-depth..." spinner on every
-    // bundled answer. A real pending state is only ever established by the dedicated
-    // onInDepthPending event (see 'tracks the turn phase through the staged lifecycle'), which a
-    // provider that actually supports In-Depth fires separately - answer_done must not fabricate
-    // one on its own.
+    // Only an explicit in-depth event may create a pending In-Depth state. Providers without the
+    // capability do not emit that event, so answer_done must not fabricate a pending section.
     mockChatStream.mockImplementation(() => {});
     const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
     await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
@@ -728,6 +732,86 @@ describe('useChartSearchAi', () => {
     await waitFor(() => expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-2'));
   });
 
+  it('blocks submission until a requested new session exists', async () => {
+    let resolveSession!: (value: { session: string; messages: never[] }) => void;
+    mockStartNewChat.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => result.current.startNewChatSession('patient-uuid'));
+    expect(result.current.isAwaitingAnswer).toBe(true);
+
+    act(() => result.current.submitQuestion('patient-uuid', 'Too early'));
+    expect(mockChatStream).not.toHaveBeenCalled();
+
+    await act(async () => resolveSession({ session: 'srv-session-2', messages: [] }));
+    await waitFor(() => expect(result.current.isAwaitingAnswer).toBe(false));
+
+    act(() => result.current.submitQuestion('patient-uuid', 'Now ready'));
+    expect(mockChatStream).toHaveBeenCalledWith(
+      'patient-uuid',
+      'srv-session-2',
+      'Now ready',
+      expect.any(Object),
+      expect.any(AbortController),
+      'single-e4b-checked',
+      'hub',
+    );
+  });
+
+  it('preserves the current conversation when starting a new session fails', async () => {
+    mockStartNewChat.mockRejectedValue(new Error('server unavailable'));
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => result.current.submitQuestion('patient-uuid', 'Q?'));
+    const callbacks = mockChatStream.mock.calls[0][3];
+    act(() => {
+      callbacks.onSession('srv-session-1');
+      callbacks.onDone({ answer: 'A.', references: [], session: 'srv-session-1', messageId: 'm-1' });
+    });
+
+    await act(async () => result.current.startNewChatSession('patient-uuid'));
+    await waitFor(() => expect(result.current.isAwaitingAnswer).toBe(false));
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].answer).toBe('A.');
+    expect(chatSessionStore.getState().sessionUuidByPatient['patient-uuid']).toBe('srv-session-1');
+  });
+
+  it('keeps an active turn running when starting a new session fails', async () => {
+    mockStartNewChat.mockRejectedValue(new Error('server unavailable'));
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => result.current.submitQuestion('patient-uuid', 'Still running?'));
+    const controller = mockChatStream.mock.calls[0][4] as AbortController;
+    const callbacks = mockChatStream.mock.calls[0][3];
+    act(() =>
+      callbacks.onAnswerDone({
+        answer: 'Visible answer.',
+        references: [],
+        answerValidation: { status: 'checking', label: 'Checking answer' },
+      }),
+    );
+
+    await act(async () => result.current.startNewChatSession('patient-uuid'));
+
+    expect(controller.signal.aborted).toBe(false);
+    expect(result.current.messages[0]).toMatchObject({
+      answer: 'Visible answer.',
+      phase: 'checking',
+      error: null,
+    });
+  });
+
   it('aborts in-flight request on unmount', async () => {
     mockChatStream.mockImplementation(() => {});
     const { result, unmount } = renderHook(() => useChartSearchAi('patient-uuid'));
@@ -786,7 +870,6 @@ describe('useChartSearchAi', () => {
       expect.any(Object),
       expect.any(AbortController),
       'team-med-checked',
-      expect.any(String),
       'hub',
     );
   });
@@ -808,7 +891,6 @@ describe('useChartSearchAi', () => {
       expect.any(Object),
       expect.any(AbortController),
       'single-e4b-checked',
-      expect.any(String),
       'hub',
     );
   });
@@ -885,12 +967,63 @@ describe('useChartSearchAi', () => {
         inDepth: { status: 'complete', answer: 'In-depth detail.' },
       }),
     );
-    expect(phase()).toBe('complete');
+    expect(phase()).toBe('settled');
     expect(result.current.messages[0].references?.[0]).toMatchObject({
       sourceText: 'Aspirin order',
       groundingScope: 'record',
       usage: [{ location: 'answer', text: 'Aspirin [1].' }],
     });
+  });
+
+  it('merges final evidence into the existing assistant row', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => result.current.submitQuestion('patient-uuid', 'Q?'));
+    const cb = mockChatStream.mock.calls[0][3];
+    act(() =>
+      cb.onAnswerDone({
+        answer: 'Aspirin [1].',
+        references: [{ index: 1, groundingStatus: 'checking' }],
+        messageId: 'm-1',
+      }),
+    );
+    act(() =>
+      cb.onEvidenceUpdated({
+        answer: 'Aspirin [1].',
+        references: [
+          {
+            index: 1,
+            resourceType: 'Order',
+            resourceUuid: 'order-1',
+            resolutionStatus: 'resolved',
+            groundingStatus: 'verified',
+          },
+        ],
+        messageId: 'm-1',
+      }),
+    );
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].references[0]).toMatchObject({
+      resourceUuid: 'order-1',
+      groundingStatus: 'verified',
+    });
+  });
+
+  it('ignores phase callbacks after the assistant row is terminal', async () => {
+    mockChatStream.mockImplementation(() => {});
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => result.current.submitQuestion('patient-uuid', 'Q?'));
+    const cb = mockChatStream.mock.calls[0][3];
+    act(() => cb.onDone({ answer: 'Done.', references: [], messageId: 'm-1' }));
+    act(() => cb.onInDepthPending({ inDepth: { status: 'pending', answer: '' } }));
+
+    expect(result.current.messages[0].phase).toBe('complete');
+    expect(result.current.messages[0].inDepth).toBeUndefined();
   });
 
   it('preserves a needs-review in-depth outcome through error and final events', async () => {

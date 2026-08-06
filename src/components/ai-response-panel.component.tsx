@@ -161,6 +161,19 @@ function safetyStatusTag(status: AiSafetyStatus, t: Translate): { tagType: 'gree
 }
 
 function safetyIssueText(issue: string, t: Translate): string {
+  if (issue.startsWith('named_drug_unresolved:')) {
+    const medication = issue.slice('named_drug_unresolved:'.length).trim();
+    if (medication && medication !== 'resolution_failed') {
+      return t(
+        'safetyNamedDrugUnresolved',
+        'The medication “{{medication}}” could not be matched to the configured reference source.',
+      ).replace('{{medication}}', medication);
+    }
+    return t(
+      'safetyDrugResolutionFailed',
+      'A named medication could not be matched to the configured reference source.',
+    );
+  }
   switch (issue) {
     case 'source_not_clinically_approved':
       return t(
@@ -294,6 +307,19 @@ const EvidenceCard: React.FC<{ refItem: AiReference; patientUuid: string; t: Tra
         <div className={styles.evidenceTitleText}>{title}</div>
       )}
       {showSource && <div className={styles.evidenceSource}>{source}</div>}
+      {refItem.source && (
+        <div className={styles.evidenceUuid}>
+          {t('sourceDataset', 'Source')}: {refItem.source}
+        </div>
+      )}
+      {(refItem.withheldInteractions ?? 0) > 0 && (
+        <div className={styles.evidenceUuid}>
+          {t(
+            'sourceSubset',
+            'This source shows a relevant subset; {{count}} additional interactions are not shown.',
+          ).replace('{{count}}', String(refItem.withheldInteractions))}
+        </div>
+      )}
       {refItem.resourceUuid && (
         <div className={styles.evidenceUuid}>
           {t('sourceUuid', 'UUID')}: {refItem.resourceUuid}
@@ -798,7 +824,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
             data-testid="ai-response-safety"
             role="note"
           >
-            <span className={styles.safetyWarningsLabel}>{t('safetyChecks', 'Safety checks')}:</span>
+            <span className={styles.safetyWarningsLabel}>{t('safetyChecks', 'Answer safety check')}:</span>
             <div className={styles.safetyWarningsList}>
               {statusTag && (
                 <span className={styles.safetyWarningItem}>

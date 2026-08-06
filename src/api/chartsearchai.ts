@@ -12,6 +12,12 @@ export const SESSION_EXPIRED_ERROR_CODE = 'chartsearchai:session-expired';
 
 export interface AiReference {
   index: number;
+  /** Server-authoritative provenance class; do not infer this from resourceType. */
+  group?: 'chart' | 'reference';
+  /** Source dataset for non-chart evidence, such as WHO-ATC. */
+  source?: string;
+  /** Related records not shown in this compact reference. */
+  withheldInteractions?: number;
   /** Stable evidence-ledger id supplied by med-agent-hub. */
   sourceId?: string;
   resourceType: string;
@@ -202,6 +208,8 @@ export interface ChatHistoryMessage {
   auditLogId?: number;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  terminalState?: 'turn_done' | 'turn_error';
+  problemCode?: string;
   references?: AiReference[];
   blocks?: AiBlock[];
   /** Deterministic safety advisories emitted by the selected hub profile. */
@@ -256,8 +264,8 @@ export async function submitFeedback(feedback: AiFeedback): Promise<void> {
  *   - sends an optional {@code session} uuid so the server can reuse the
  *     prior conversation thread
  *   - sends a product profile only for med-agent-hub requests
- *   - captures the server's {@code X-ChartSearchAi-Session} response header
- *     and surfaces it via {@code onSession} before the first content event arrives
+ *   - accepts the optional session response header and the canonical
+ *     {@code turn_started} session marker
  *
  * The server is the source of truth for conversation history — the client
  * sends only the new user message, not the rendered transcript.
@@ -270,6 +278,7 @@ export function chatPatientChartStream(
     onSession: (uuid: string) => void;
     onAnswerDone?: (response: AiSearchResponse) => void;
     onAnswerValidation?: (response: AiSearchResponse) => void;
+    onEvidenceUpdated?: (response: AiSearchResponse) => void;
     onInDepthPending?: (payload: AiInDepthEvent) => void;
     onInDepthDone?: (payload: AiInDepthEvent) => void;
     onInDepthError?: (payload: AiInDepthEvent) => void;
@@ -278,7 +287,6 @@ export function chatPatientChartStream(
   },
   abortController: AbortController | undefined,
   profileId?: string,
-  requestId?: string,
   providerId?: string,
 ): void {
   if (providerId === 'hub' && !profileId?.trim()) {
@@ -289,9 +297,6 @@ export function chatPatientChartStream(
   const body: Record<string, string> = { patient: patientUuid, question };
   if (profileId?.trim()) {
     body.profile = profileId;
-  }
-  if (requestId?.trim()) {
-    body.requestId = requestId;
   }
   // Provider is optional: when omitted the backend applies its configured
   // default (bundled on a fresh install), never a silent cross-provider fallback.
@@ -357,25 +362,42 @@ export function chatPatientChartStream(
       let dataLines: string[] = [];
       let streamFinalized = false;
 
+      const failStream = (message: string) => {
+        streamFinalized = true;
+        callbacks.onError(message);
+      };
+
       function dispatchEvent() {
         if (dataLines.length === 0) {
           eventType = '';
           return;
         }
         const data = dataLines.join('\n');
+        if (streamFinalized) {
+          eventType = '';
+          dataLines = [];
+          return;
+        }
         if (eventType === 'answer_done') {
           try {
             const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
             callbacks.onAnswerDone?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
           } catch {
-            callbacks.onError('Failed to parse staged answer response');
+            failStream('Failed to parse staged answer response');
           }
         } else if (eventType === 'answer_validation') {
           try {
             const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
             callbacks.onAnswerValidation?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
           } catch {
-            callbacks.onError('Failed to parse answer validation response');
+            failStream('Failed to parse answer validation response');
+          }
+        } else if (eventType === 'evidence_updated') {
+          try {
+            const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
+            callbacks.onEvidenceUpdated?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+          } catch {
+            failStream('Failed to parse evidence update');
           }
         } else if (eventType === 'indepth_pending') {
           try {
@@ -383,7 +405,7 @@ export function chatPatientChartStream(
             if (!raw.inDepth || typeof raw.inDepth !== 'object') throw new Error('missing inDepth');
             callbacks.onInDepthPending?.(raw);
           } catch {
-            callbacks.onError('Failed to parse in-depth pending response');
+            failStream('Failed to parse in-depth pending response');
           }
         } else if (eventType === 'indepth_done') {
           try {
@@ -391,7 +413,7 @@ export function chatPatientChartStream(
             if (!raw.inDepth || typeof raw.inDepth !== 'object') throw new Error('missing inDepth');
             callbacks.onInDepthDone?.(raw);
           } catch {
-            callbacks.onError('Failed to parse in-depth response');
+            failStream('Failed to parse in-depth response');
           }
         } else if (eventType === 'indepth_error') {
           try {
@@ -399,7 +421,7 @@ export function chatPatientChartStream(
             if (!raw.inDepth || typeof raw.inDepth !== 'object') throw new Error('missing inDepth');
             callbacks.onInDepthError?.(raw);
           } catch {
-            callbacks.onError('Failed to parse in-depth error response');
+            failStream('Failed to parse in-depth error response');
           }
         } else if (eventType === 'turn_started') {
           // Lifecycle marker carrying {session, messageId, provider}. The
@@ -417,13 +439,13 @@ export function chatPatientChartStream(
         } else if (eventType === 'turn_done') {
           streamFinalized = true;
           try {
-            // Lifecycle marker: the answer itself arrived on answer_done and is
-            // preserved by the consumer's envelope merge; this only finalizes
-            // the turn and carries {session, messageId, provider}.
+            // The terminal event carries the final envelope so a late safety,
+            // validation, evidence, or In-Depth correction reaches the live UI.
             const raw = JSON.parse(data) as AiSearchResponse;
+            if (typeof raw.answer !== 'string') throw new Error('missing final answer');
             callbacks.onDone(raw);
           } catch {
-            callbacks.onError('Failed to parse final response');
+            failStream('Failed to parse final response');
           }
         } else if (eventType === 'turn_error') {
           streamFinalized = true;

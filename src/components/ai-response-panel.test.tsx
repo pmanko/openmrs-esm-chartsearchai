@@ -109,6 +109,63 @@ describe('AiResponsePanel reference links', () => {
     expect(screen.getByText('[4] · querystore:encounter:enc-4 · resolved · verified')).toBeInTheDocument();
   });
 
+  it('uses the server evidence group and discloses source subset metadata', () => {
+    render(
+      <AiResponsePanel
+        answer="A medication-safety finding was generated [8]."
+        references={[
+          {
+            index: 8,
+            group: 'reference',
+            source: 'WHO-ATC research package',
+            withheldInteractions: 4,
+            resourceType: 'safety_finding',
+            resourceUuid: 'finding-8',
+            date: '',
+            sourceText: 'Potential class interaction.',
+            resolutionStatus: 'resolved',
+            groundingStatus: 'unchecked',
+          },
+        ]}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Source: WHO-ATC research package')).toBeInTheDocument();
+    expect(screen.getByText(/4 additional interactions are not shown/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Potential class interaction.' })).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Clinical reference data — not this patient’s record.')).toHaveLength(2);
+  });
+
+  it('keeps legacy safety findings off patient-chart links when group metadata is absent', () => {
+    render(
+      <AiResponsePanel
+        answer="A medication-safety finding was generated [8]."
+        references={[
+          {
+            index: 8,
+            resourceType: 'safety_finding',
+            resourceUuid: 'finding-8',
+            date: '',
+            sourceText: 'Potential class interaction.',
+            resolutionStatus: 'resolved',
+            groundingStatus: 'unchecked',
+          },
+        ]}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Clinical reference data — not this patient’s record.')).toHaveLength(2);
+  });
+
   it('shows an unresolved citation as a missing-source evidence tile', () => {
     render(
       <AiResponsePanel
@@ -574,7 +631,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
     expect(screen.getByText('Dose')).toBeInTheDocument();
     expect(screen.getByText('Interaction')).toBeInTheDocument();
     expect(screen.getByText(/Ibuprofen: stated dose/)).toBeInTheDocument();
@@ -601,7 +658,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
     expect(screen.getByText('Contraindication')).toBeInTheDocument();
     expect(screen.getByText(/recorded allergy to Ibuprofen/)).toBeInTheDocument();
   });
@@ -619,7 +676,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.queryByText('Safety checks:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Answer safety check:')).not.toBeInTheDocument();
   });
 
   it('stays silent for a checked status with nothing flagged (the clean, good case)', () => {
@@ -636,7 +693,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.queryByText('Safety checks:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Answer safety check:')).not.toBeInTheDocument();
   });
 
   it('surfaces an unavailable safety status even with no warnings, so it is never mistaken for checked-clean', () => {
@@ -653,7 +710,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
     expect(screen.getByText('Safety check unavailable')).toBeInTheDocument();
   });
 
@@ -671,7 +728,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
     expect(screen.getByText('Limited safety check')).toBeInTheDocument();
   });
 
@@ -701,7 +758,12 @@ describe('AiResponsePanel safety warnings', () => {
             execution_complete: true,
           },
           identity_confidence: 'limited',
-          issues: ['source_not_clinically_approved', 'cross_reactivity_not_clinically_approved', 'mapping_incomplete'],
+          issues: [
+            'source_not_clinically_approved',
+            'cross_reactivity_not_clinically_approved',
+            'mapping_incomplete',
+            'named_drug_unresolved:frovatriptan',
+          ],
         }}
         auditLogId={42}
         error={null}
@@ -715,6 +777,9 @@ describe('AiResponsePanel safety warnings', () => {
     expect(summary).toHaveTextContent('research source is not clinically approved');
     expect(summary).toHaveTextContent('cross-reactivity rules are not clinically approved');
     expect(summary).toHaveTextContent('Not every active medication could be mapped');
+    expect(summary).toHaveTextContent(
+      'The medication “frovatriptan” could not be matched to the configured reference source.',
+    );
     expect(summary).toHaveTextContent('Medication rules');
     expect(summary).toHaveTextContent('chartsearchai-research-seed-v1 (1) - proposed');
     expect(summary).toHaveTextContent('Cross-reactivity rules');
@@ -789,7 +854,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
     expect(screen.getByText('Dose')).toBeInTheDocument();
     expect(screen.queryByText('Safety check unavailable')).not.toBeInTheDocument();
     expect(screen.queryByText('Limited safety check')).not.toBeInTheDocument();
@@ -876,7 +941,7 @@ describe('AiResponsePanel safety warnings', () => {
     );
 
     // A future/unknown warning type must still surface — not silently vanish.
-    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
     expect(screen.getByText('Safety')).toBeInTheDocument();
     expect(screen.getByText(/a new advisory kind/)).toBeInTheDocument();
   });
@@ -897,7 +962,7 @@ describe('AiResponsePanel safety warnings', () => {
     // A role="alert" here would preempt the answer announcement in the enclosing role="log".
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     // ...but the warning still renders.
-    expect(screen.getByText('Safety checks:')).toBeInTheDocument();
+    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
   });
 });
 

@@ -219,18 +219,15 @@ describe('AiChatContent', () => {
   });
 
   describe('auto-scroll', () => {
-    // Regression: when streaming ends, the AiResponsePanel mounts the references list
-    // and feedback widget in the same React commit that moves the phase to 'complete',
-    // growing the message past the history-area viewport. The scroll effect must fire
-    // on this phase transition so those new elements stay visible.
-    it('scrolls history area to bottom when the turn phase transitions to complete', () => {
+    it('brings the answer check back into view when checking finishes', () => {
       const streaming = {
         id: 'm1',
         question: 'Any allergies?',
-        answer: 'partial',
+        answer: 'No known allergies.',
         references: [],
         auditLogId: undefined,
-        phase: 'answering',
+        answerValidation: { status: 'checking' as const, label: 'Checking answer' },
+        phase: 'checking' as const,
         error: null,
       };
       mockUseChartSearchAi.mockReturnValue({
@@ -241,16 +238,19 @@ describe('AiChatContent', () => {
         clearMessages: vi.fn(),
       });
       const { rerender } = render(<AiChatContent mode="workspace" patientUuid="p1" />);
-
-      const log = screen.getByRole('log');
-      Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1000 });
-      log.scrollTop = 0;
+      const answerBubble = screen.getByTestId('latest-answer');
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(answerBubble, 'scrollIntoView', { configurable: true, value: scrollIntoView });
 
       mockUseChartSearchAi.mockReturnValue({
         messages: [
           {
             ...streaming,
-            answer: 'No known allergies.',
+            answerValidation: {
+              status: 'needs_review' as const,
+              label: 'Needs review',
+              summary: 'The answer could not be confirmed against the chart.',
+            },
             references: [{ index: 1, resourceType: 'obs', resourceUuid: 'uuid-1', date: '2026-01-01' }],
             phase: 'complete',
           },
@@ -262,15 +262,13 @@ describe('AiChatContent', () => {
       });
       rerender(<AiChatContent mode="workspace" patientUuid="p1" />);
 
-      expect(log.scrollTop).toBe(1000);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
     });
   });
 
   describe('safety-warning forwarding', () => {
     it('forwards a message safetyWarnings to the response panel', () => {
-      // Regression guard for the wiring at ai-chat-content.component.tsx (safetyWarnings={msg.safetyWarnings}):
-      // the hook populates the message and the panel renders it, but dropping this prop pass-through
-      // would let the chips silently never reach the panel, with no other test catching it.
+      // The message-to-panel boundary must preserve warnings produced by the safety check.
       mockUseChartSearchAi.mockReturnValue({
         messages: [
           {
@@ -302,9 +300,7 @@ describe('AiChatContent', () => {
     });
 
     it('forwards a message safetyStatus to the response panel even with no warnings', () => {
-      // Regression guard for the wiring at ai-chat-content.component.tsx (safetyStatus={msg.safetyStatus}):
-      // unavailable/limited must reach the panel so a check that could not run is never silently
-      // indistinguishable from one that ran clean.
+      // The message-to-panel boundary must preserve limited and unavailable safety states.
       mockUseChartSearchAi.mockReturnValue({
         messages: [
           {

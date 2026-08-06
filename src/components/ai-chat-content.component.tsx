@@ -38,6 +38,7 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const historyAreaRef = useRef<HTMLDivElement>(null);
+  const latestAnswerRef = useRef<HTMLDivElement>(null);
 
   const { messages, isAwaitingAnswer, submitQuestion, stopCurrent, startNewChatSession } =
     useChartSearchAi(patientUuid);
@@ -134,14 +135,21 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
   const lastAnswer = lastMessage?.answer ?? '';
   // In-depth arrives after the answer settles; track it so it keeps the transcript scrolled to the bottom too.
   const lastInDepth = lastMessage?.inDepth?.answer ?? '';
-  // The tail phase changes at every lifecycle transition (incl. terminal) — re-scroll on each so
-  // elements that mount on settle/complete (references, feedback) stay visible.
-  const lastPhase = lastMessage?.phase;
   useEffect(() => {
     if (historyAreaRef.current) {
       historyAreaRef.current.scrollTop = historyAreaRef.current.scrollHeight;
     }
-  }, [lastAnswer, lastInDepth, lastPhase]);
+  }, [lastAnswer, lastInDepth]);
+
+  const lastValidationStatus = lastMessage?.answerValidation?.status;
+  const previousValidationStatusRef = useRef(lastValidationStatus);
+  useEffect(() => {
+    const previousStatus = previousValidationStatusRef.current;
+    if (previousStatus === 'checking' && lastValidationStatus && lastValidationStatus !== 'checking') {
+      latestAnswerRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    }
+    previousValidationStatusRef.current = lastValidationStatus;
+  }, [lastValidationStatus]);
 
   const hasCompletedAnswer = messages.some((m) => Boolean(m.answer) && !isPhaseAwaiting(m.phase));
 
@@ -243,10 +251,14 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
           <p className={styles.infoText}>{t('noPatientSelected', 'No patient selected')}</p>
         )}
 
-        {messages.map((msg) => (
+        {messages.map((msg, index) => (
           <div key={msg.id} className={styles.messagePair}>
             <div className={styles.questionBubble}>{msg.question}</div>
-            <div className={styles.answerBubble}>
+            <div
+              className={styles.answerBubble}
+              data-testid={index === messages.length - 1 ? 'latest-answer' : undefined}
+              ref={index === messages.length - 1 ? latestAnswerRef : undefined}
+            >
               <AiResponsePanel
                 answer={msg.answer}
                 references={msg.references}

@@ -1,20 +1,18 @@
 /**
  * One explicit lifecycle phase per assistant turn — the single source of truth the UI derives all
- * behavior, rendering, and DOM signals from. It mirrors the hub's staged SSE events, relayed
- * verbatim by ChartSearchAiRestController.handleHubStagedEvent:
+ * behavior, rendering, and DOM signals from. It mirrors the canonical provider SSE lifecycle:
  *
  *   created           → 'answering'
- *   answer_done       → 'checking'     (answer text complete; self-check running)
+ *   answer_done       → 'checking' or 'settled' (depending on answerValidation)
  *   answer_validation → 'settled'      (answer available + checked; composer unlocks)
  *   indepth_pending   → 'in-depth'     (in-depth generating in the background; delivered whole on
  *                                       indepth_done — the hub does not token-stream in-depth)
- *   indepth_done | indepth_error | done | stop | preempt → 'complete'
+ *   indepth_done | indepth_error → 'settled' (payload complete; terminal marker still pending)
+ *   done | stop | preempt → 'complete'
  *   onError           → 'error'        (the answer generation itself failed)
  *
- * Replaces the previous four overlapping flags (isLoading, answerSettled, inDepth.status,
- * answerValidation.status) that each consumer had to reinterpret. The status detail of the
- * validation and in-depth (checked/edited/… and pending/complete/failed) still lives on the
- * message as payload the panel renders; `phase` is the lifecycle position.
+ * Validation and In-Depth details (checked/edited/… and pending/complete/failed) remain on the
+ * message payload; `phase` is the single lifecycle position used for UI behavior.
  */
 export type TurnPhase = 'answering' | 'checking' | 'settled' | 'in-depth' | 'complete' | 'error';
 
