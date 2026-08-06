@@ -171,8 +171,26 @@ function safetyIssueText(issue: string, t: Translate): string {
       return t('safetyCrossReactivityNotApproved', 'The cross-reactivity rules are not clinically approved.');
     case 'source_unavailable':
       return t('safetySourceUnavailable', 'No medication-safety reference source was available.');
+    case 'source_data_invalid':
+      return t('safetySourceDataInvalid', 'The medication-safety reference data could not be read safely.');
+    case 'source_data_partially_invalid':
+      return t(
+        'safetySourceDataPartiallyInvalid',
+        'Some medication-safety reference records were invalid and ignored.',
+      );
     case 'source_retired':
       return t('safetySourceRetired', 'The configured medication-safety source has been retired.');
+    case 'cross_reactivity_source_unavailable':
+      return t('safetyCrossReactivitySourceUnavailable', 'No cross-reactivity reference source was available.');
+    case 'cross_reactivity_data_invalid':
+      return t('safetyCrossReactivityDataInvalid', 'The cross-reactivity reference data could not be read safely.');
+    case 'cross_reactivity_data_partially_invalid':
+      return t(
+        'safetyCrossReactivityDataPartiallyInvalid',
+        'Some cross-reactivity reference records were invalid and ignored.',
+      );
+    case 'cross_reactivity_source_retired':
+      return t('safetyCrossReactivitySourceRetired', 'The configured cross-reactivity source has been retired.');
     case 'patient_context_unavailable':
       return t('safetyPatientContextUnavailable', 'The patient context needed for this check was unavailable.');
     case 'mapping_incomplete':
@@ -715,9 +733,19 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         const effectiveStatus = safetyCheck?.status ?? safetyStatus;
         const statusTag = effectiveStatus ? safetyStatusTag(effectiveStatus, t) : null;
         const hasWarnings = Boolean(safetyWarnings && safetyWarnings.length > 0);
-        const issues = (safetyCheck?.issues ?? []).map((issue) => safetyIssueText(issue, t));
-        const sourceId = safetyCheck?.package?.id?.trim();
-        const sourceVersion = safetyCheck?.package?.version?.trim();
+        const issues = Array.from(new Set(safetyCheck?.issues ?? [])).map((issue) => safetyIssueText(issue, t));
+        const medicationPackage = safetyCheck?.package;
+        const relationshipPackage = medicationPackage?.cross_reactivity;
+        const sourceRows = [
+          {
+            label: t('safetyMedicationRulesSource', 'Medication rules'),
+            source: medicationPackage,
+          },
+          {
+            label: t('safetyCrossReactivityRulesSource', 'Cross-reactivity rules'),
+            source: relationshipPackage,
+          },
+        ].filter(({ source }) => Boolean(source?.id?.trim()));
         if (!statusTag && !hasWarnings && issues.length === 0) {
           return null;
         }
@@ -771,11 +799,24 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                     <li key={`${issue}-${index}`}>{issue}</li>
                   ))}
                 </ul>
-                {sourceId && (
-                  <div className={styles.safetyCheckSource}>
-                    {t('safetyCheckSource', 'Source')}: {sourceId}
-                    {sourceVersion ? ` (${sourceVersion})` : ''}
-                  </div>
+                {sourceRows.length > 0 && (
+                  <dl className={styles.safetyCheckSources}>
+                    {sourceRows.map(({ label, source }) => {
+                      const sourceId = source?.id?.trim();
+                      const sourceVersion = source?.version?.trim();
+                      const reviewState = source?.review_state?.trim();
+                      return (
+                        <div className={styles.safetyCheckSourceRow} key={label}>
+                          <dt>{label}</dt>
+                          <dd>
+                            {sourceId}
+                            {sourceVersion ? ` (${sourceVersion})` : ''}
+                            {reviewState ? ` - ${reviewState.replaceAll('_', ' ')}` : ''}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
                 )}
               </div>
             )}

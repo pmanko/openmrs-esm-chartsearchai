@@ -689,6 +689,11 @@ describe('AiResponsePanel safety warnings', () => {
             id: 'chartsearchai-research-seed-v1',
             version: '1',
             review_state: 'proposed',
+            cross_reactivity: {
+              id: 'chartsearchai-cross-reactivity-research-v1',
+              version: '2',
+              review_state: 'evidence_curated',
+            },
           },
           coverage: {
             mapping_complete: false,
@@ -710,7 +715,34 @@ describe('AiResponsePanel safety warnings', () => {
     expect(summary).toHaveTextContent('research source is not clinically approved');
     expect(summary).toHaveTextContent('cross-reactivity rules are not clinically approved');
     expect(summary).toHaveTextContent('Not every active medication could be mapped');
-    expect(summary).toHaveTextContent('Source: chartsearchai-research-seed-v1 (1)');
+    expect(summary).toHaveTextContent('Medication rules');
+    expect(summary).toHaveTextContent('chartsearchai-research-seed-v1 (1) - proposed');
+    expect(summary).toHaveTextContent('Cross-reactivity rules');
+    expect(summary).toHaveTextContent('chartsearchai-cross-reactivity-research-v1 (2) - evidence curated');
+  });
+
+  it('explains malformed primary and relationship reference data in plain language', () => {
+    render(
+      <AiResponsePanel
+        answer="Ibuprofen could be considered [1]."
+        references={[]}
+        safetyWarnings={[]}
+        safetyStatus="limited"
+        safetyCheck={{
+          status: 'limited',
+          issues: ['source_data_partially_invalid', 'cross_reactivity_data_invalid', 'cross_reactivity_source_retired'],
+        }}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    const summary = screen.getByTestId('safety-check-summary');
+    expect(summary).toHaveTextContent('Some medication-safety reference records were invalid and ignored.');
+    expect(summary).toHaveTextContent('The cross-reactivity reference data could not be read safely.');
+    expect(summary).toHaveTextContent('The configured cross-reactivity source has been retired.');
   });
 
   it('surfaces both the status tag and the individual warnings together', () => {

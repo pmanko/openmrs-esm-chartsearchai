@@ -76,17 +76,23 @@ export interface AiSafetyWarning {
  */
 export type AiSafetyStatus = 'checked' | 'limited' | 'unavailable';
 
+export interface AiSafetyReferencePackage {
+  id?: string;
+  source_format?: string;
+  version?: string;
+  provenance?: unknown;
+  review_state?: 'proposed' | 'evidence_curated' | 'clinically_approved' | 'retired' | string;
+  issues?: string[];
+}
+
 /** Provenance and coverage for the deterministic medication-safety pass. */
 export interface AiSafetyCheck {
   schema_version?: 'drug_safety.v1' | string;
   status: AiSafetyStatus;
   warnings?: AiSafetyWarning[];
-  package?: {
-    id?: string;
-    source_format?: string;
-    version?: string;
-    provenance?: unknown;
-    review_state?: 'proposed' | 'evidence_curated' | 'clinically_approved' | 'retired' | string;
+  package?: AiSafetyReferencePackage & {
+    cross_reactivity_review_state?: string;
+    cross_reactivity?: AiSafetyReferencePackage;
   };
   coverage?: {
     mapping_complete?: boolean;

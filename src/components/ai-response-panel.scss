@@ -73,23 +73,23 @@
 }
 
 .answerValidationSummary {
-  margin: layout.$spacing-02 0 layout.$spacing-03;
-  padding: layout.$spacing-03 layout.$spacing-04;
+  margin: layout.$spacing-03 0 layout.$spacing-04;
+  padding: layout.$spacing-04;
   border: 1px solid colors.$gray-30;
-  border-left: 3px solid colors.$gray-30;
-  color: colors.$gray-80;
+  border-left: 4px solid colors.$gray-30;
+  color: colors.$gray-100;
   overflow-wrap: anywhere;
 }
 
 .answerValidationSummaryHeading {
-  @include type.type-style('label-01');
-  color: colors.$gray-90;
-  font-weight: 600;
+  @include type.type-style('heading-compact-01');
+  color: colors.$gray-100;
   margin-bottom: layout.$spacing-02;
 }
 
 .answerValidationSummaryBody {
-  @include type.type-style('body-01');
+  @include type.type-style('body-compact-01');
+  color: colors.$gray-90;
   line-height: 1.45;
   white-space: pre-line;
 }
@@ -532,9 +532,33 @@
   padding-left: layout.$spacing-05;
 }
 
-.safetyCheckSource {
+.safetyCheckSources {
   @include type.type-style('helper-text-01');
   color: colors.$gray-70;
-  margin-top: layout.$spacing-03;
+  margin: layout.$spacing-03 0 0;
   overflow-wrap: anywhere;
+}
+
+.safetyCheckSourceRow {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  column-gap: layout.$spacing-03;
+
+  dt {
+    font-weight: 600;
+  }
+
+  dd {
+    margin: 0;
+  }
+
+  & + & {
+    margin-top: layout.$spacing-02;
+  }
+}
+
+@media (max-width: 42rem) {
+  .safetyCheckSourceRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
