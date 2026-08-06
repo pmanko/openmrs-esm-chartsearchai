@@ -466,6 +466,11 @@
   border-left-color: colors.$red-60;
 }
 
+.safetyWarnings_checked {
+  background-color: colors.$green-10;
+  border-left-color: colors.$green-50;
+}
+
 .safetyWarnings_limited {
   background-color: colors.$yellow-10;
   border-left-color: colors.$yellow-30;
@@ -478,6 +483,10 @@
 
 .safetyWarningsLabel {
   @include type.type-style('label-01');
+  color: colors.$gray-90;
+}
+
+.safetyWarnings_flagged .safetyWarningsLabel {
   color: colors.$red-70;
 }
 
@@ -533,8 +542,8 @@
 }
 
 .safetyCheckSources {
-  @include type.type-style('helper-text-01');
-  color: colors.$gray-70;
+  @include type.type-style('body-compact-01');
+  color: colors.$gray-90;
   margin: layout.$spacing-03 0 0;
   overflow-wrap: anywhere;
 }
@@ -555,6 +564,12 @@
   & + & {
     margin-top: layout.$spacing-02;
   }
+}
+
+.safetyCheckProvenance {
+  display: block;
+  color: colors.$gray-70;
+  margin-top: layout.$spacing-01;
 }
 
 @media (max-width: 42rem) {

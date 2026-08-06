@@ -10,6 +10,7 @@ import {
   type AiInDepth,
   type AiReference,
   type AiSafetyCheck,
+  type AiSafetyReferencePackage,
   type AiSafetyStatus,
   type AiSafetyWarning,
   SESSION_EXPIRED_ERROR_CODE,
@@ -145,18 +146,17 @@ function safetyWarningTag(type: string, t: Translate): { tagType: 'red' | 'magen
 }
 
 /**
- * Maps a non-`checked` safety status to a Carbon Tag. `checked` renders nothing here — a clean
- * check stays silent, same as before this status existed. `limited`/`unavailable` must always be
- * visible, even with zero warnings, so they can never be mistaken for a clean checked result.
+ * Maps a safety status to a Carbon Tag. Every completed status stays visible so a clean check is
+ * distinguishable from a missing check, and limited/unavailable results cannot look complete.
  */
-function safetyStatusTag(status: AiSafetyStatus, t: Translate): { tagType: 'gray'; label: string } | null {
+function safetyStatusTag(status: AiSafetyStatus, t: Translate): { tagType: 'green' | 'gray'; label: string } {
   switch (status) {
+    case 'checked':
+      return { tagType: 'green', label: t('safetyChecked', 'Checked') };
     case 'limited':
       return { tagType: 'gray', label: t('safetyLimited', 'Limited safety check') };
     case 'unavailable':
       return { tagType: 'gray', label: t('safetyUnavailable', 'Safety check unavailable') };
-    default:
-      return null;
   }
 }
 
@@ -178,6 +178,11 @@ function safetyIssueText(issue: string, t: Translate): string {
         'safetySourceDataPartiallyInvalid',
         'Some medication-safety reference records were invalid and ignored.',
       );
+    case 'source_package_identity_incomplete':
+      return t(
+        'safetySourcePackageIdentityIncomplete',
+        'The medication-safety rule package is missing required source identity information.',
+      );
     case 'source_retired':
       return t('safetySourceRetired', 'The configured medication-safety source has been retired.');
     case 'cross_reactivity_source_unavailable':
@@ -188,6 +193,11 @@ function safetyIssueText(issue: string, t: Translate): string {
       return t(
         'safetyCrossReactivityDataPartiallyInvalid',
         'Some cross-reactivity reference records were invalid and ignored.',
+      );
+    case 'cross_reactivity_package_identity_incomplete':
+      return t(
+        'safetyCrossReactivityPackageIdentityIncomplete',
+        'The cross-reactivity rule package is missing required source identity information.',
       );
     case 'cross_reactivity_source_retired':
       return t('safetyCrossReactivitySourceRetired', 'The configured cross-reactivity source has been retired.');
@@ -208,6 +218,21 @@ function safetyIssueText(issue: string, t: Translate): string {
       return issue.replaceAll('_', ' ');
   }
 }
+
+function safetyPackageProvenance(source?: AiSafetyReferencePackage): string | undefined {
+  const provenance = source?.provenance;
+  if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    return undefined;
+  }
+  const record = provenance as Record<string, unknown>;
+  const values = ['source', 'dataset', 'origin']
+    .map((key) => record[key])
+    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+    .map((value) => value.trim());
+  const unique = Array.from(new Set(values));
+  return unique.length > 0 ? unique.join(' / ') : undefined;
+}
+
 function stripCitations(answer: string): string {
   return answer.replace(/\s?\[\d+(?:\s*,\s*\d+)*\]/g, '').trim();
 }
@@ -746,7 +771,11 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
             source: relationshipPackage,
           },
         ].filter(({ source }) => Boolean(source?.id?.trim()));
-        if (!statusTag && !hasWarnings && issues.length === 0) {
+        const hasSafetyDetails = issues.length > 0 || sourceRows.length > 0;
+        if (effectiveStatus === 'checked' && !hasWarnings && !hasSafetyDetails) {
+          return null;
+        }
+        if (!statusTag && !hasWarnings && !hasSafetyDetails) {
           return null;
         }
         return (
@@ -757,9 +786,11 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
             className={`${styles.safetyWarningsSection} ${
               hasWarnings
                 ? styles.safetyWarnings_flagged
-                : effectiveStatus === 'limited'
-                  ? styles.safetyWarnings_limited
-                  : styles.safetyWarnings_unavailable
+                : effectiveStatus === 'checked'
+                  ? styles.safetyWarnings_checked
+                  : effectiveStatus === 'limited'
+                    ? styles.safetyWarnings_limited
+                    : styles.safetyWarnings_unavailable
             }`}
             data-testid="ai-response-safety"
             role="note"
@@ -791,20 +822,25 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                 );
               })}
             </div>
-            {issues.length > 0 && (
+            {hasSafetyDetails && (
               <div className={styles.safetyCheckSummary} data-testid="safety-check-summary">
-                <div className={styles.safetyCheckSummaryHeading}>{t('safetyCheckDetails', 'Check details')}</div>
-                <ul className={styles.safetyCheckIssueList}>
-                  {issues.map((issue, index) => (
-                    <li key={`${issue}-${index}`}>{issue}</li>
-                  ))}
-                </ul>
+                <div className={styles.safetyCheckSummaryHeading}>
+                  {t('safetyCheckDetails', 'Medication safety details')}
+                </div>
+                {issues.length > 0 && (
+                  <ul className={styles.safetyCheckIssueList}>
+                    {issues.map((issue, index) => (
+                      <li key={`${issue}-${index}`}>{issue}</li>
+                    ))}
+                  </ul>
+                )}
                 {sourceRows.length > 0 && (
                   <dl className={styles.safetyCheckSources}>
                     {sourceRows.map(({ label, source }) => {
                       const sourceId = source?.id?.trim();
                       const sourceVersion = source?.version?.trim();
                       const reviewState = source?.review_state?.trim();
+                      const provenance = safetyPackageProvenance(source);
                       return (
                         <div className={styles.safetyCheckSourceRow} key={label}>
                           <dt>{label}</dt>
@@ -812,6 +848,11 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                             {sourceId}
                             {sourceVersion ? ` (${sourceVersion})` : ''}
                             {reviewState ? ` - ${reviewState.replaceAll('_', ' ')}` : ''}
+                            {provenance && (
+                              <span className={styles.safetyCheckProvenance}>
+                                {t('safetyRulesSource', 'Source')}: {provenance}
+                              </span>
+                            )}
                           </dd>
                         </div>
                       );

@@ -711,7 +711,7 @@ describe('AiResponsePanel safety warnings', () => {
     );
 
     const summary = screen.getByTestId('safety-check-summary');
-    expect(summary).toHaveTextContent('Check details');
+    expect(summary).toHaveTextContent('Medication safety details');
     expect(summary).toHaveTextContent('research source is not clinically approved');
     expect(summary).toHaveTextContent('cross-reactivity rules are not clinically approved');
     expect(summary).toHaveTextContent('Not every active medication could be mapped');
@@ -730,7 +730,13 @@ describe('AiResponsePanel safety warnings', () => {
         safetyStatus="limited"
         safetyCheck={{
           status: 'limited',
-          issues: ['source_data_partially_invalid', 'cross_reactivity_data_invalid', 'cross_reactivity_source_retired'],
+          issues: [
+            'source_data_partially_invalid',
+            'source_package_identity_incomplete',
+            'cross_reactivity_data_invalid',
+            'cross_reactivity_package_identity_incomplete',
+            'cross_reactivity_source_retired',
+          ],
         }}
         auditLogId={42}
         error={null}
@@ -741,7 +747,13 @@ describe('AiResponsePanel safety warnings', () => {
 
     const summary = screen.getByTestId('safety-check-summary');
     expect(summary).toHaveTextContent('Some medication-safety reference records were invalid and ignored.');
+    expect(summary).toHaveTextContent(
+      'The medication-safety rule package is missing required source identity information.',
+    );
     expect(summary).toHaveTextContent('The cross-reactivity reference data could not be read safely.');
+    expect(summary).toHaveTextContent(
+      'The cross-reactivity rule package is missing required source identity information.',
+    );
     expect(summary).toHaveTextContent('The configured cross-reactivity source has been retired.');
   });
 
@@ -754,6 +766,22 @@ describe('AiResponsePanel safety warnings', () => {
           { type: 'overdose', drug: 'Ibuprofen', detail: 'stated dose ~2400 mg/day exceeds the 1200 mg/day maximum' },
         ]}
         safetyStatus="checked"
+        safetyCheck={{
+          status: 'checked',
+          package: {
+            id: 'approved-medication-rules',
+            version: '3',
+            provenance: { source: 'Local clinical formulary', origin: 'configured package' },
+            review_state: 'clinically_approved',
+            cross_reactivity: {
+              id: 'approved-relationships',
+              version: '2',
+              provenance: { source: 'Medication review board' },
+              review_state: 'clinically_approved',
+            },
+          },
+          issues: [],
+        }}
         auditLogId={42}
         error={null}
         phase="complete"
@@ -765,6 +793,53 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.getByText('Dose')).toBeInTheDocument();
     expect(screen.queryByText('Safety check unavailable')).not.toBeInTheDocument();
     expect(screen.queryByText('Limited safety check')).not.toBeInTheDocument();
+    expect(screen.getByTestId('safety-check-summary')).toHaveTextContent(
+      'approved-medication-rules (3) - clinically approved',
+    );
+    expect(screen.getByTestId('safety-check-summary')).toHaveTextContent(
+      'approved-relationships (2) - clinically approved',
+    );
+    expect(screen.getByTestId('safety-check-summary')).toHaveTextContent(
+      'Source: Local clinical formulary / configured package',
+    );
+    expect(screen.getByTestId('safety-check-summary')).toHaveTextContent('Source: Medication review board');
+  });
+
+  it('shows a clean checked result and its source packages without requiring a warning', () => {
+    render(
+      <AiResponsePanel
+        answer="No medication issue was found."
+        references={[]}
+        safetyWarnings={[]}
+        safetyStatus="checked"
+        safetyCheck={{
+          status: 'checked',
+          package: {
+            id: 'approved-medication-rules',
+            version: '3',
+            provenance: { source: 'Local clinical formulary' },
+            review_state: 'clinically_approved',
+            cross_reactivity: {
+              id: 'approved-relationships',
+              version: '2',
+              provenance: { source: 'Medication review board' },
+              review_state: 'clinically_approved',
+            },
+          },
+          issues: [],
+        }}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.getByText('Checked')).toBeInTheDocument();
+    const summary = screen.getByTestId('safety-check-summary');
+    expect(summary).toHaveTextContent('Medication safety details');
+    expect(summary).toHaveTextContent('approved-medication-rules (3) - clinically approved');
+    expect(summary).toHaveTextContent('approved-relationships (2) - clinically approved');
   });
 
   it('does not repeat a drug name already present in a warning detail', () => {
