@@ -152,7 +152,6 @@ const AiChatContent: React.FC<AiChatContentProps> = ({ mode, onClose, patientUui
   }, []);
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       className={`${styles.chatRoot} ${mode === 'floating' ? styles.chatRootFloating : styles.chatRootWorkspace}`}
       ref={rootRef}

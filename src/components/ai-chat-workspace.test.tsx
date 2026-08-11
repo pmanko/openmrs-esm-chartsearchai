@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import AiChatWorkspace from './ai-chat-workspace.component';
+import type * as EsmFramework from '@openmrs/esm-framework';
 
 vi.mock('./ai-chat-content.component', () => ({
   __esModule: true,
@@ -11,7 +12,7 @@ vi.mock('./ai-chat-content.component', () => ({
 }));
 
 vi.mock('@openmrs/esm-framework', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@openmrs/esm-framework')>();
+  const actual = await importOriginal<typeof EsmFramework>();
   return {
     ...actual,
     Workspace2: vi.fn(({ title, children }: { title: string; children: React.ReactNode }) => (
