@@ -1,14 +1,11 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen } from '@testing-library/react';
-
 import { ActionMenuButton2, useConfig, userHasAccess } from '@openmrs/esm-framework';
-
-import type * as EsmFramework from '@openmrs/esm-framework';
 import AiChatActionButton from './ai-chat-action-button.component';
 
 vi.mock('@openmrs/esm-framework', async (importOriginal) => {
-  const actual = await importOriginal<typeof EsmFramework>();
+  const actual = await importOriginal<typeof import('@openmrs/esm-framework')>();
   return {
     ...actual,
     useSession: vi.fn(() => ({ user: { uuid: 'user-uuid', privileges: [{ name: 'AI Query Patient Data' }] } })),

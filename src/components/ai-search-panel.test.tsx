@@ -3,9 +3,8 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useConfig, usePatient } from '@openmrs/esm-framework';
-import AiSearchPanel from './ai-search-panel.component';
 import { type ChatMessage } from '../hooks/useChartSearchAi';
-import type * as ChartSearchAiApi from '../api/chartsearchai';
+import AiSearchPanel from './ai-search-panel.component';
 
 const mockUseConfig = useConfig as Mock;
 const mockUsePatient = usePatient as Mock;
@@ -50,7 +49,7 @@ vi.mock('../hooks/useSpeechRecognition', () => ({
 }));
 
 vi.mock('../api/chartsearchai', async (importActual) => ({
-  ...(await importActual<typeof ChartSearchAiApi>()),
+  ...(await importActual<typeof import('../api/chartsearchai')>()),
   submitFeedback: vi.fn().mockResolvedValue(undefined),
 }));
 
