@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { type PatientChartWorkspaceActionButtonProps } from '../types';
 import AiChatWorkspace from './ai-chat-workspace.component';
 
 vi.mock('./ai-chat-content.component', () => ({
@@ -22,10 +23,9 @@ vi.mock('@openmrs/esm-framework', async (importOriginal) => {
   };
 });
 
-const baseProps = {
+const baseProps: PatientChartWorkspaceActionButtonProps = {
   groupProps: {
     patientUuid: 'test-patient-uuid',
-    patient: {} as fhir.Patient,
     visitContext: undefined,
     mutateVisitContext: vi.fn(),
   },
