@@ -190,7 +190,6 @@ const AiChatContent: React.FC<AiChatContentProps> = ({
   }, [patientUuid, startNewChatSession]);
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       className={`${styles.chatRoot} ${mode === 'floating' ? styles.chatRootFloating : styles.chatRootWorkspace} ${
         mode === 'floating' && isExpanded ? styles.chatRootFloatingExpanded : ''

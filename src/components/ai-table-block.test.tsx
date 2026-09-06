@@ -103,7 +103,7 @@ describe('AiTableBlockView', () => {
       rows: [],
     };
     const { container } = render(<AiTableBlockView block={empty} references={references} patientUuid={patientUuid} />);
-    expect(container.firstChild).toBeNull();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('handles cells missing from row.cells (renders empty cell, not crash)', () => {

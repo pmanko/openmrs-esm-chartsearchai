@@ -460,7 +460,6 @@ export function chatPatientChartStream(
         dataLines = [];
       }
 
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await streamReader.read();
         if (done) break;

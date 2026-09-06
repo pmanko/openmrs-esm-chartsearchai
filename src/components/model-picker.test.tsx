@@ -1,3 +1,4 @@
+/* eslint-disable testing-library/no-container */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';

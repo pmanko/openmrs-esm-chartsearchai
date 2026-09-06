@@ -1,3 +1,4 @@
+/* eslint-disable testing-library/no-container, testing-library/no-node-access */
 import React from 'react';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -19,7 +20,7 @@ describe('MarkdownAnswer', () => {
   it('renders **bold** as a <strong> element, not literal asterisks', () => {
     const { container } = render(<MarkdownAnswer answer="**Answer**" references={[]} patientUuid={patientUuid} />);
     expect(container.querySelector('strong')?.textContent).toBe('Answer');
-    expect(container.textContent).not.toContain('**');
+    expect(container).not.toHaveTextContent('**');
   });
 
   it('renders a markdown bullet list as <li> items', () => {
