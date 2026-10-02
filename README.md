@@ -73,7 +73,7 @@ The following options can be set via the OpenMRS 3.x config system:
 
 ### Provider and profile selection components
 
-The provider selector reads `/providers`, uses the backend's advertised
+The provider selector is hidden when only one provider is enabled. It reads `/providers`, uses the backend's advertised
 default, and keeps an unavailable explicit selection until the user chooses a
 replacement. The Hub profile selector reads `/models`, shows product profiles and
 their availability, and selects the Hub-advertised default. It does not query Hub
@@ -83,6 +83,11 @@ control still permits discovery of the required default profile.
 The conversation panel mounts these controls. Restored history adopts its recorded
 provider; switching providers starts a fresh conversation. An unavailable explicit
 selection remains visible until the user chooses a supported replacement.
+
+The [backend provider contract](https://github.com/pmanko/openmrs-module-chartsearchai/blob/main/README.md#provider-integration-contract)
+owns lifecycle and persistence semantics. The frontend uses one stream client and
+turn reducer for both providers, restores recorded output from history, and settles
+interrupted optional stages without hiding retained answer or review evidence.
 
 ## API endpoints used
 
