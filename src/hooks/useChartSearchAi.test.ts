@@ -1342,6 +1342,9 @@ describe('useChartSearchAi answer-limit measurements', () => {
     interactionClaimPairs: { judged: 2, misattributedCitations: [166], unfounded: 1 },
     unsupportedEndedOrderClaims: ['Nevirapine'],
     unstatedSignificanceQualifiers: [46],
+    answeredByTheModule: true,
+    findingsStatedByTheModule: [55],
+    asksWhetherSheHasTakenADrug: true,
   };
 
   it('covers every upstream answer-limit field across staged events', () => {

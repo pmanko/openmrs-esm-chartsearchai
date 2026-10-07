@@ -24,6 +24,9 @@ export const NO_ANSWER_LIMITS: MessageAnswerLimits = {
   unfaithfullyRenderedCitations: null,
   cautionLedOverWithholding: null,
   interactionClaimPairs: null,
+  answeredByTheModule: null,
+  findingsStatedByTheModule: null,
+  asksWhetherSheHasTakenADrug: null,
 };
 
 /**
@@ -61,6 +64,9 @@ export function mergeDisclosure(previous: MessageAnswerLimits, source: Partial<A
     unfaithfullyRenderedCitations: source.unfaithfullyRenderedCitations ?? previous.unfaithfullyRenderedCitations,
     cautionLedOverWithholding: source.cautionLedOverWithholding ?? previous.cautionLedOverWithholding,
     interactionClaimPairs: source.interactionClaimPairs ?? previous.interactionClaimPairs,
+    answeredByTheModule: source.answeredByTheModule ?? previous.answeredByTheModule,
+    findingsStatedByTheModule: source.findingsStatedByTheModule ?? previous.findingsStatedByTheModule,
+    asksWhetherSheHasTakenADrug: source.asksWhetherSheHasTakenADrug ?? previous.asksWhetherSheHasTakenADrug,
   };
 }
 

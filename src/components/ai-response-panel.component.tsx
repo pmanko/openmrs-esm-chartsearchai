@@ -16,7 +16,7 @@ import {
   type AiSafetyWarning,
   SESSION_EXPIRED_ERROR_CODE,
 } from '../api/chartsearchai';
-import { compactChips } from '../utils/compact-chips';
+import { compactChips, notInTheAnswer, rewordedInTheAnswer } from '../utils/compact-chips';
 import {
   citationStripPattern,
   isReferenceData,
@@ -640,6 +640,9 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   interactionClaimPairs,
   unsupportedEndedOrderClaims,
   unstatedSignificanceQualifiers,
+  answeredByTheModule,
+  findingsStatedByTheModule,
+  asksWhetherSheHasTakenADrug,
   error,
   phase,
   patientUuid,
@@ -704,9 +707,10 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   }, [answer]);
 
   // The chips drawn in the safety box: every one but those the answer already states (backend ADR
-  // Decision 124 — on a question asking only for her allergies the answer names the conflicting order and
-  // quotes the chip). A chip stated there is not drawn again beside the list the clinician asked for.
-  // The full list still feeds everything that reads a finding rather than draws one.
+  // Decision 124 — on a question asking only for her allergies the answer names the conflicting
+  // order and quotes the chip). A chip stated there is not drawn again beside the list the
+  // clinician asked for. The full list still feeds everything that reads a finding rather than
+  // draws one.
   const shownSafetyWarnings = useMemo(
     () => (safetyWarnings ?? []).filter((warning) => warning.statedInTheAnswer !== true),
     [safetyWarnings],
@@ -714,12 +718,51 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
 
   // The chips the answer cites and every fidelity check clears, drawn on one line with their detail
   // behind a toggle rather than repeating the answer's paragraph beside it — see compactChips for
-  // what qualifies. Computed over EVERY chip, drawn or not, so a chip the safety box leaves out still
-  // counts against a shared key. Never while streaming: the checks have not run yet.
+  // what qualifies. Computed over EVERY chip, drawn or not, so a chip the safety box leaves out
+  // still counts against a shared key. Never while streaming: the checks have not run yet.
   const compactWarnings = useMemo(() => {
     if (isLoading) return new Map<AiSafetyWarning, number[]>();
     const all = safetyWarnings ?? [];
     const positions = compactChips(answer, references, all, {
+      misattributedOrderCitations,
+      unstatedFindingSeverities,
+      unfoundedFindingSeverities,
+      unfaithfullyRenderedCitations,
+      cautionLedOverWithholding,
+      interactionClaimPairs,
+      answeredByTheModule,
+      findingsStatedByTheModule,
+    });
+    return new Map([...positions].map(([position, indexes]) => [all[position], indexes]));
+  }, [
+    isLoading,
+    answer,
+    references,
+    safetyWarnings,
+    misattributedOrderCitations,
+    unstatedFindingSeverities,
+    unfoundedFindingSeverities,
+    unfaithfullyRenderedCitations,
+    cautionLedOverWithholding,
+    interactionClaimPairs,
+    answeredByTheModule,
+    findingsStatedByTheModule,
+  ]);
+  // The chips the answer does not cite that are about the drug proposed against a drug the question
+  // only lists, drawn on one line marked as not in the answer — see notInTheAnswer. Never while
+  // streaming, as compactWarnings.
+  const absentWarnings = useMemo(() => {
+    if (isLoading) return new Set<AiSafetyWarning>();
+    const all = safetyWarnings ?? [];
+    return new Set([...notInTheAnswer(answer, references, all)].map((position) => all[position]));
+  }, [isLoading, answer, references, safetyWarnings]);
+  // The cited chips whose finding the answer reworded and nothing else flagged, drawn on one line
+  // that says so — see rewordedInTheAnswer. They do not count towards collapsing the box, so the
+  // tag is seen. Never while streaming.
+  const rewordedWarnings = useMemo(() => {
+    if (isLoading) return new Map<AiSafetyWarning, number[]>();
+    const all = safetyWarnings ?? [];
+    const positions = rewordedInTheAnswer(answer, references, all, {
       misattributedOrderCitations,
       unstatedFindingSeverities,
       unfoundedFindingSeverities,
@@ -742,24 +785,30 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   ]);
   const [expandedWarnings, setExpandedWarnings] = useState<Set<AiSafetyWarning>>(() => new Set());
 
-  // The whole safety box collapses to a summary line only where EVERY chip it draws qualifies for the
-  // one-line form. One chip that does not keeps the box open: that is the finding a clinician must not
-  // have to go looking for, and the box is where an answer that dropped or softened one still shows it.
-  //
-  // A chip about another of her medications than the drug the answer is about (backend
-  // aboutAnotherOfHerMedications), or about any drug other than the one the question proposes (backend
-  // aboutADrugOtherThanTheOneProposed), is drawn apart from those, behind a line of its own: still in the
-  // box and one click away, but it neither keeps the box open nor sits among the findings about that drug.
-  // Only `true` moves a chip; `false` is no claim it is about the drug in question.
+  // The whole safety box collapses to a summary line only where EVERY chip it draws qualifies for
+  // the one-line form. One chip that does not keeps the box open: that is the finding a clinician
+  // must not have to go looking for, and the box is where an answer that dropped or softened one
+  // still shows it.  A chip about another of her medications than the drug the answer is about
+  // (backend aboutAnotherOfHerMedications), or about any drug other than the one the question
+  // proposes (backend aboutADrugOtherThanTheOneProposed), is drawn apart from those, behind a line
+  // of its own: still in the box and one click away, but it neither keeps the box open nor sits
+  // among the findings about that drug. Only `true` moves a chip; `false` is no claim it is about
+  // the drug in question.
+  // A question asking whether she has ever taken a drug (backend asksWhetherSheHasTakenADrug,
+  // ADR Decision 156) draws every chip apart: they are about that drug's place in her chart, not
+  // a reading of the question.
+  const historyQuestion = asksWhetherSheHasTakenADrug === true;
   const mainWarnings = useMemo(
-    () => shownSafetyWarnings.filter((warning) => !isApartFromTheDrugAsked(warning)),
-    [shownSafetyWarnings],
+    () => (historyQuestion ? [] : shownSafetyWarnings.filter((warning) => !isApartFromTheDrugAsked(warning))),
+    [shownSafetyWarnings, historyQuestion],
   );
   const otherWarnings = useMemo(
-    () => shownSafetyWarnings.filter((warning) => isApartFromTheDrugAsked(warning)),
-    [shownSafetyWarnings],
+    () =>
+      historyQuestion ? shownSafetyWarnings : shownSafetyWarnings.filter((warning) => isApartFromTheDrugAsked(warning)),
+    [shownSafetyWarnings, historyQuestion],
   );
-  // The line says the patient takes them only where every chip behind it is one of her own prescriptions.
+  // The line says the patient takes them only where every chip behind it is one of her own
+  // prescriptions.
   const otherWarningsAreHerMedications = otherWarnings.every(
     (warning) => warning.aboutAnotherOfHerMedications === true,
   );
@@ -787,8 +836,9 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
     'The date is a calendar day in UTC, so it can be a day off the local date.',
   );
 
-  // The API layer emits a code (not display text) for session expiry so the wording can be localized
-  // here; every other error is already a human-readable string from the server or browser.
+  // The API layer emits a code (not display text) for session expiry so the wording can be
+  // localized here; every other error is already a human-readable string from the server or
+  // browser.
   const displayError =
     error === SESSION_EXPIRED_ERROR_CODE
       ? t('sessionExpired', 'Your session has expired. Please log in again.')
@@ -815,15 +865,18 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   const renderWarning = (warning: AiSafetyWarning, i: number) => {
     const { tagType, label } = safetyWarningTag(warning.type, t);
     const endedOn = calendarDay(warning.endedOrderStopDate);
-    const compact = compactWarnings.has(warning);
+    const absent = !compactWarnings.has(warning) && absentWarnings.has(warning);
+    const reworded = !compactWarnings.has(warning) && rewordedWarnings.has(warning);
+    const compact = compactWarnings.has(warning) || absent || reworded;
     const collapsed = compact && !expandedWarnings.has(warning);
     const partners = Array.isArray(warning.namedPartners)
       ? warning.namedPartners.filter((partner) => typeof partner === 'string' && partner.trim())
       : [];
     const severity = typeof warning.severity === 'string' && warning.severity.trim() ? warning.severity : null;
-    // The one-line form names the partner from namedPartners. A chip carrying none — a finding relating two
-    // drugs the question names — says who it is with only in its detail's lead, "<drug> interacts with
-    // <partner>, also named in the question — <note>", so the line takes that lead rather than dropping it.
+    // The one-line form names the partner from namedPartners. A chip carrying none — a finding
+    // relating two drugs the question names — says who it is with only in its detail's lead,
+    // "<drug> interacts with <partner>, also named in the question — <note>", so the line takes
+    // that lead rather than dropping it.
     const dash = typeof warning.detail === 'string' ? warning.detail.indexOf(' — ') : -1;
     const oneLineSubject = partners.length === 0 && dash > 0 ? warning.detail.slice(0, dash) : warning.drug;
     return (
@@ -848,17 +901,57 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
           {compact && (
             <>
               {' '}
-              <span
-                className={styles.statedInAnswerTag}
-                title={t(
-                  'seeMarkerInTheAnswerTitle',
-                  'The answer cites this finding at that marker, and the module’s checks of how it was rendered found nothing, so its detail is collapsed rather than repeated. The answer may still word it differently or leave part of it out; open the detail to read the finding in full.',
-                )}
-              >
-                {t('seeMarkerInTheAnswer', 'See {{markers}} in the answer', {
-                  markers: (compactWarnings.get(warning) ?? []).map((index) => `[${index}]`).join(', '),
-                })}
-              </span>{' '}
+              {reworded ? (
+                <span
+                  className={styles.statedInAnswerTag}
+                  title={t(
+                    'rewordedInTheAnswerTitle',
+                    'The answer cites this finding at {{markers}} and reworded it: it reproduces the record and then says something different inside the same sentence. Open the detail to compare it with the record’s own words.',
+                    { markers: (rewordedWarnings.get(warning) ?? []).map((index) => `[${index}]`).join(', ') },
+                  )}
+                >
+                  {t('rewordedInTheAnswer', 'Reworded in the answer, compare')}
+                </span>
+              ) : absent ? (
+                <span
+                  className={styles.statedInAnswerTag}
+                  title={t(
+                    'notInTheAnswerTitle',
+                    'The answer does not mention this finding. It relates the drug asked about to another drug the question names; open the detail to read it in full.',
+                  )}
+                >
+                  {t('notInTheAnswer', 'Not in the answer')}
+                </span>
+              ) : (compactWarnings.get(warning) ?? []).length === 0 ? (
+                <span
+                  className={styles.statedInAnswerTag}
+                  title={t(
+                    'statedAboveByTheModuleTitle',
+                    'The module states this finding after the answer; open the detail to read it in full.',
+                  )}
+                >
+                  {t('statedAboveByTheModule', 'Stated above')}
+                </span>
+              ) : (
+                <span
+                  className={styles.statedInAnswerTag}
+                  title={
+                    answeredByTheModule === true
+                      ? t(
+                          'seeMarkerInTheModulesAnswerTitle',
+                          'The answer states this finding briefly at that marker; open the detail to read it in full.',
+                        )
+                      : t(
+                          'seeMarkerInTheAnswerTitle',
+                          'The answer cites this finding at that marker, and no check of how it was rendered named it, so its detail is collapsed rather than repeated. The answer may still word it differently, leave part of it out or leave out its rating, which this line states; open the detail to read the finding in full.',
+                        )
+                  }
+                >
+                  {t('seeMarkerInTheAnswer', 'See {{markers}} in the answer', {
+                    markers: (compactWarnings.get(warning) ?? []).map((index) => `[${index}]`).join(', '),
+                  })}
+                </span>
+              )}{' '}
               <button
                 type="button"
                 className={styles.detailsToggle}
@@ -1142,10 +1235,10 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                   </Tag>
                 </span>
               ) : null;
-              // Where the cited record's content came from, on hover over the citation itself: provenance
-              // a clinician may want, not a line every drug-reference citation needs. Keyed on the value,
-              // never the group: a reference-group record may carry none, and the module's own finding
-              // does not.
+              // Where the cited record's content came from, on hover over the citation itself:
+              // provenance a clinician may want, not a line every drug-reference citation needs.
+              // Keyed on the value, never the group: a reference-group record may carry none, and
+              // the module's own finding does not.
               const source = typeof ref.source === 'string' && ref.source.trim() ? ref.source.trim() : null;
               const sourceTitle = source ? t('referenceSourceHover', 'Source: {{source}}', { source }) : undefined;
               const link = url ? (
@@ -1307,15 +1400,20 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
           {otherWarnings.length > 0 && (
             <>
               <span className={styles.otherMedicationsLine}>
-                {otherWarningsAreHerMedications
-                  ? t('otherMedicationFindings', '{{count}} finding about another of this patient’s medications', {
+                {historyQuestion
+                  ? t('historyQuestionFindings', '{{count}} finding about this patient’s medications', {
                       count: otherWarnings.length,
-                      defaultValue_other: '{{count}} findings about other medications this patient takes',
+                      defaultValue_other: '{{count}} findings about this patient’s medications',
                     })
-                  : t('notAboutTheDrugAsked', '{{count}} finding not about the drug asked about', {
-                      count: otherWarnings.length,
-                      defaultValue_other: '{{count}} findings not about the drug asked about',
-                    })}{' '}
+                  : otherWarningsAreHerMedications
+                    ? t('otherMedicationFindings', '{{count}} finding about another of this patient’s medications', {
+                        count: otherWarnings.length,
+                        defaultValue_other: '{{count}} findings about other medications this patient takes',
+                      })
+                    : t('notAboutTheDrugAsked', '{{count}} finding not about the drug asked about', {
+                        count: otherWarnings.length,
+                        defaultValue_other: '{{count}} findings not about the drug asked about',
+                      })}{' '}
                 <button
                   type="button"
                   className={styles.detailsToggle}

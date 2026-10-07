@@ -1,0 +1,160 @@
+/**
+ * A live model answer that leaves a finding against a drug she is only LISTED as taking
+ * unmentioned: asked "The patient is currently on Abacavir, Lopinavir / ritonavir, Didanosine and
+ * Trimethoprim and sulfamethoxazole is it safe to give Fluconazole?", it cites [57] and [63] and
+ * not [62], fluconazole against the listed ritonavir; the module states [55], against her own
+ * lidocaine order, after it.
+ *
+ * Patient 763e6e5f-c489-4bab-8a55-c379f085dd1c. Measured 2026-10-06 on an OpenMRS 3.7.1 standalone
+ * through the streaming search's done event (question id 14511), verbatim as the wire carried it.
+ */
+export const LISTED_DRUG_NOT_IN_ANSWER_RESPONSE = {
+  unstatedFindingSeverities: [
+    {
+      citation: 57,
+      rating: 'Moderate',
+    },
+    {
+      citation: 63,
+      rating: 'Minor',
+    },
+  ],
+  questionId: '14511',
+  references: [
+    {
+      index: 57,
+      resourceType: 'safety_finding',
+      resourceUuid: 'interaction:Fluconazole',
+      date: null,
+      grounded: null,
+      group: 'reference',
+      source: null,
+      withheldInteractions: 0,
+      attachedByTheModule: false,
+      attachedFor: [],
+    },
+    {
+      index: 63,
+      resourceType: 'safety_finding',
+      resourceUuid: 'interaction:Fluconazole',
+      date: null,
+      grounded: null,
+      group: 'reference',
+      source: null,
+      withheldInteractions: 0,
+      attachedByTheModule: false,
+      attachedFor: [],
+    },
+  ],
+  activeOrderClaims: {
+    stated: 0,
+    uncited: 0,
+  },
+  unresolvedDrugClass: null,
+  unfoundedFindingSeverities: [],
+  misattributedOrderCitations: [],
+  unsupportedEndedOrderClaims: [],
+  cautionLedOverWithholding: [],
+  chartReadForSafety: true,
+  findingCitations: {
+    carried: 12,
+    cited: 2,
+  },
+  interactionPairs: {
+    found: 8,
+    reported: 8,
+    belowFloor: null,
+  },
+  findingsStatedByTheModule: [55],
+  orderStopDates: [],
+  disclaimer:
+    "This response is AI-generated and may not be accurate. It is not a substitute for clinical judgment. Always verify against the patient's medical records.",
+  doseCeilingCoverage: 'absent',
+  findingPartners: null,
+  interactionClaimPairs: {
+    judged: 0,
+    misattributedCitations: [],
+    unfounded: 0,
+  },
+  answeredByTheModule: false,
+  unfaithfullyRenderedCitations: [57],
+  answer:
+    "Fluconazole can be given, with two cautions: Lopinavir in combination with ritonavir may cause dose-related prolongation of the QT interval, theoretically resulting in additive effects and increased risk of ventricular arrhythmias including torsade de pointes and sudden death [57], and Fluconazole interacts with Sulfamethoxazole (sulfamethazine), which may rarely prolong the QT interval of the electrocardiogram, theoretically resulting in additive effects and increased risk of ventricular arrhythmias including torsade de pointes and sudden death [63]. Not stated above, against this patient's own orders: Fluconazole interacts with active order Lidocaine — Moderate. The chart holds no active order for Abacavir, Lopinavir, Ritonavir, Didanosine, Trimethoprim or Sulfamethoxazole (sulfamethazine).",
+  unstatedSignificanceQualifiers: [],
+  conditionRuleCoverage: 'absent',
+  safetyWarnings: [
+    {
+      type: 'interaction',
+      drug: 'Fluconazole',
+      detail:
+        'Fluconazole interacts with active order Lidocaine — Moderate. Coadministration with fluconazole may increase the plasma concentrations of drugs that are substrates of CYP450 3A4. The mechanism is decreased clearance due to inhibition of CYP450 3A4-mediated metabolism by fluconazole, a moderate inhibitor of the isoenzyme.',
+      severity: 'Moderate',
+      chartOrderBridges: [],
+      namedPartners: ['Lidocaine'],
+      restsOnAnUncorroboratedChartMatch: false,
+      aboutAnEndedOrder: false,
+      endedOrderStopDate: null,
+      aboutACurrentMedication: false,
+      currentMedicationOrders: [],
+      statedInTheAnswer: false,
+      aboutAnotherOfHerMedications: false,
+      aboutADrugOtherThanTheOneProposed: false,
+      findingCitation: 55,
+    },
+    {
+      type: 'interaction',
+      drug: 'Fluconazole',
+      detail:
+        'Fluconazole interacts with Lopinavir, also named in the question — Moderate. Lopinavir in combination with ritonavir may cause dose-related prolongation of the QT interval. Theoretically, coadministration with other agents that can prolong the QT interval may result in additive effects and increased risk of ventricular arrhythmias including torsade de pointes and sudden death.',
+      severity: 'Moderate',
+      chartOrderBridges: [],
+      namedPartners: [],
+      restsOnAnUncorroboratedChartMatch: false,
+      aboutAnEndedOrder: false,
+      endedOrderStopDate: null,
+      aboutACurrentMedication: false,
+      currentMedicationOrders: [],
+      statedInTheAnswer: false,
+      aboutAnotherOfHerMedications: false,
+      aboutADrugOtherThanTheOneProposed: false,
+      findingCitation: 57,
+    },
+    {
+      type: 'interaction',
+      drug: 'Fluconazole',
+      detail:
+        'Fluconazole interacts with Ritonavir, also named in the question — Minor. The coadministration with fluconazole may slightly increase the plasma concentrations of ritonavir. The proposed mechanism is fluconazole inhibition of CYP450 3A4, the isoenzyme responsible for the metabolic clearance of ritonavir. Other azole antifungal agents are expected to affect ritonavir in a similar fashion but possibly to a greater extent, since fluconazole is a relatively weak inhibitor of CYP450 3A4. No special precautions are necessary when fluconazole is given with ritonavir.',
+      severity: 'Minor',
+      chartOrderBridges: [],
+      namedPartners: [],
+      restsOnAnUncorroboratedChartMatch: false,
+      aboutAnEndedOrder: false,
+      endedOrderStopDate: null,
+      aboutACurrentMedication: false,
+      currentMedicationOrders: [],
+      statedInTheAnswer: false,
+      aboutAnotherOfHerMedications: false,
+      aboutADrugOtherThanTheOneProposed: false,
+      findingCitation: 62,
+    },
+    {
+      type: 'interaction',
+      drug: 'Fluconazole',
+      detail:
+        'Fluconazole interacts with Sulfamethoxazole (sulfamethazine), also named in the question — Minor. Limited data suggest that sulfamethoxazole-trimethoprim (SMX-TMP) may rarely prolong the QT interval of the electrocardiogram. Theoretically, coadministration with other agents that can prolong the QT interval may result in additive effects and increased risk of ventricular arrhythmias including torsade de pointes and sudden death. There have been isolated reports of QT prolongation and ventricular arrhythmias occurring in patients treated with SMX-TMP intravenously. Patients should be advised to seek prompt medical attention if they experience symptoms that could indicate the occurrence of torsade de pointes such as dizziness, lightheadedness, fainting, palpitation, irregular heart rhythm, shortness of breath, or syncope.',
+      severity: 'Minor',
+      chartOrderBridges: [],
+      namedPartners: [],
+      restsOnAnUncorroboratedChartMatch: false,
+      aboutAnEndedOrder: false,
+      endedOrderStopDate: null,
+      aboutACurrentMedication: false,
+      currentMedicationOrders: [],
+      statedInTheAnswer: false,
+      aboutAnotherOfHerMedications: false,
+      aboutADrugOtherThanTheOneProposed: false,
+      findingCitation: 63,
+    },
+  ],
+  unstatedDosingCeilings: [],
+};
