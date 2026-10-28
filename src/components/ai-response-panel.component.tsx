@@ -549,6 +549,8 @@ function findingCheckLabel(check: string, t: Translate): string {
       return t('findingCheckCitation', 'Citation support');
     case 'record':
       return t('findingCheckRecord', 'Record check');
+    case 'agreement':
+      return t('findingCheckAgreement', 'Second writer');
     default:
       return check;
   }

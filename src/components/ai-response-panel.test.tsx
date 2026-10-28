@@ -2255,6 +2255,22 @@ describe('AiResponsePanel per-section confidence', () => {
     expect(inDepth).toHaveTextContent('point 3');
   });
 
+  it('names a second-writer disagreement as such', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: {
+            level: null,
+            findings: [{ check: 'agreement', where: 'answer', status: 'fail', says: 'The second writer states 74 kg.' }],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('Second writer');
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('74 kg');
+  });
+
   it('YELLOW (med): shows the message, collapses the review note behind a reveal', () => {
     render(
       <AiResponsePanel
