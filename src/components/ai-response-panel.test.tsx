@@ -2225,6 +2225,36 @@ describe('AiResponsePanel per-section confidence', () => {
     expect(screen.getByTestId('section-in-depth')).toHaveTextContent('Medium confidence');
   });
 
+  it('shows no confidence chip and lists what the checks found', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: {
+            level: null,
+            note: '',
+            findings: [
+              { check: 'citation', where: 'answer', status: 'info', says: '[21] does not hold: 52 kg on 2025-10-22.' },
+            ],
+          },
+          in_depth: {
+            level: null,
+            note: '',
+            findings: [{ check: 'date', where: 3, status: 'fail', says: 'the chart does not give 41 on 2025-10-22' }],
+          },
+        }}
+      />,
+    );
+    const answer = screen.getByTestId('section-answer');
+    expect(answer).not.toHaveTextContent('confidence');
+    expect(answer).toHaveTextContent('Citation support');
+    expect(answer).toHaveTextContent('52 kg on 2025-10-22');
+    const inDepth = screen.getByTestId('section-in-depth');
+    expect(inDepth).not.toHaveTextContent('confidence');
+    expect(inDepth).toHaveTextContent('Date check');
+    expect(inDepth).toHaveTextContent('point 3');
+  });
+
   it('YELLOW (med): shows the message, collapses the review note behind a reveal', () => {
     render(
       <AiResponsePanel
