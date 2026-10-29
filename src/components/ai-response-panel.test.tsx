@@ -2262,13 +2262,38 @@ describe('AiResponsePanel per-section confidence', () => {
         confidence={{
           answer: {
             level: null,
-            findings: [{ check: 'agreement', where: 'answer', status: 'fail', says: 'The second writer states 74 kg.' }],
+            findings: [
+              { check: 'agreement', where: 'answer', status: 'fail', says: 'The second writer states 74 kg.' },
+            ],
           },
         }}
       />,
     );
     expect(screen.getByTestId('section-answer')).toHaveTextContent('Second writer');
     expect(screen.getByTestId('section-answer')).toHaveTextContent('74 kg');
+  });
+
+  it('names a chart rule finding as such', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: {
+            level: null,
+            findings: [
+              {
+                check: 'rule',
+                where: 'answer',
+                status: 'fail',
+                says: 'Rifampicin isoniazid pyrazinamide and ethambutol is not antiretroviral',
+              },
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('Chart rule');
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('not antiretroviral');
   });
 
   it('YELLOW (med): shows the message, collapses the review note behind a reveal', () => {

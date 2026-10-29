@@ -432,7 +432,10 @@ export interface AiTableBlock {
 
 export type AiBlock = AiTableBlock;
 
-/** One thing a check found on a section: which check, where (the answer or an In-Depth point), what it says. */
+/**
+ * One thing a check found on a section: which check, where (the answer or an In-Depth point),
+ * what it says.
+ */
 export interface AiFinding {
   check: 'date' | 'review' | 'citation' | 'record' | string;
   where: 'answer' | number | string;
