@@ -31,6 +31,31 @@
   vertical-align: middle;
 }
 
+.findings {
+  margin: layout.$spacing-02 0 layout.$spacing-03;
+  padding-left: layout.$spacing-05;
+  font-size: 0.75rem;
+  list-style: disc;
+}
+
+.findingFail {
+  color: colors.$red-60;
+}
+
+.findingInfo {
+  color: colors.$gray-70;
+}
+
+.findingCheck {
+  font-weight: 600;
+  margin-right: layout.$spacing-02;
+}
+
+.findingWhere {
+  color: colors.$gray-60;
+  margin-right: layout.$spacing-02;
+}
+
 .answerValidation {
   display: inline-block;
   padding: 1px 7px;

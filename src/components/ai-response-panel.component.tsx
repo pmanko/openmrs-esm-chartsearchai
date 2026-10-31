@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { IconButton, InlineLoading, Tag } from '@carbon/react';
 import { Copy } from '@carbon/react/icons';
 import {
+  type AiFinding,
   type AiAnswerLimits,
   type AiAnswerValidation,
   type AiBlock,
@@ -538,6 +539,46 @@ function splitSections(answer: string): { answerBody: string; inDepthBody: strin
   };
 }
 
+function findingCheckLabel(check: string, t: Translate): string {
+  switch (check) {
+    case 'date':
+      return t('findingCheckDate', 'Date check');
+    case 'review':
+      return t('findingCheckReview', 'Model review');
+    case 'citation':
+      return t('findingCheckCitation', 'Citation support');
+    case 'record':
+      return t('findingCheckRecord', 'Record check');
+    case 'agreement':
+      return t('findingCheckAgreement', 'Second writer');
+    default:
+      return check;
+  }
+}
+
+/** Section findings replace the grade under the findings policy. */
+const FindingsList: React.FC<{ findings: AiFinding[] }> = ({ findings }) => {
+  const { t } = useTranslation();
+  return (
+    <ul className={styles.findings} data-testid="findings">
+      {findings.map((finding, index) => (
+        <li
+          key={`${finding.check}-${String(finding.where)}-${index}`}
+          className={finding.status === 'info' ? styles.findingInfo : styles.findingFail}
+        >
+          <span className={styles.findingCheck}>{findingCheckLabel(finding.check, t)}</span>
+          {typeof finding.where === 'number' && (
+            <span className={styles.findingWhere}>
+              {t('findingPoint', 'point {{n}}', { n: finding.where, interpolation: { escapeValue: false } })}
+            </span>
+          )}{' '}
+          {finding.says}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 const ConfidenceChip: React.FC<{ level: string }> = ({ level }) => {
   const { t } = useTranslation();
   const [label, color] = confidenceChipProps(level, t);
@@ -636,8 +677,11 @@ const ConfidenceSection: React.FC<{
   if (!body) {
     return null;
   }
+  // Under the Hub's findings policy the section carries no grade: no chip, the findings listed.
+  const graded = section?.level != null;
   const level = section?.level ?? 'green';
-  const note = section?.note ?? '';
+  const note = graded ? (section?.note ?? '') : '';
+  const findings = section?.findings ?? [];
   const rendered = (
     <MarkdownAnswer answer={body} references={references} patientUuid={patientUuid} decorations={decorations} />
   );
@@ -653,9 +697,10 @@ const ConfidenceSection: React.FC<{
     <div className={styles.csec} data-testid={`section-${label.replace(/\s+/g, '-').toLowerCase()}`}>
       <div className={styles.ctitle}>
         {label} {answerValidation && <AnswerValidationBadge validation={answerValidation} />}{' '}
-        {section && <ConfidenceChip level={level} />}
+        {section && graded && <ConfidenceChip level={level} />}
       </div>
       <AnswerValidationSummary validation={answerValidation} />
+      {!graded && findings.length > 0 && <FindingsList findings={findings} />}
       {level === 'red' ? (
         <>
           {note && <div className={`${styles.caveat} ${styles.caveatRed}`}>{note}</div>}

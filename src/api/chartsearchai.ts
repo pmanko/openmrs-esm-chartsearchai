@@ -432,10 +432,22 @@ export interface AiTableBlock {
 
 export type AiBlock = AiTableBlock;
 
-/** One section's validator confidence: a traffic-light level + an optional caveat note. */
+/** A check finding with its location in the answer or an In-Depth point. */
+export interface AiFinding {
+  check: 'date' | 'review' | 'citation' | 'record' | string;
+  where: 'answer' | number | string;
+  status?: 'fail' | 'warn' | 'info' | string;
+  says: string;
+}
+
+/**
+ * One section's confidence: a traffic-light level plus an optional caveat note, or, under the
+ * Hub's findings policy, no level (null) and the list of what the checks found.
+ */
 export interface AiConfidenceSection {
-  level: 'green' | 'yellow' | 'red';
+  level: 'green' | 'yellow' | 'red' | null;
   note?: string;
+  findings?: AiFinding[];
 }
 
 /**
