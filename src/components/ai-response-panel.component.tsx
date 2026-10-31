@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { IconButton, InlineLoading, Tag } from '@carbon/react';
 import { Copy } from '@carbon/react/icons';
 import {
-  AiFinding,
+  type AiFinding,
   type AiAnswerLimits,
   type AiAnswerValidation,
   type AiBlock,
@@ -556,7 +556,7 @@ function findingCheckLabel(check: string, t: Translate): string {
   }
 }
 
-/** What the checks found on a section, one line per finding; replaces the grade under the findings policy. */
+/** Section findings replace the grade under the findings policy. */
 const FindingsList: React.FC<{ findings: AiFinding[] }> = ({ findings }) => {
   const { t } = useTranslation();
   return (
@@ -568,7 +568,9 @@ const FindingsList: React.FC<{ findings: AiFinding[] }> = ({ findings }) => {
         >
           <span className={styles.findingCheck}>{findingCheckLabel(finding.check, t)}</span>
           {typeof finding.where === 'number' && (
-            <span className={styles.findingWhere}>{t('findingPoint', 'point {{n}}', { n: finding.where })}</span>
+            <span className={styles.findingWhere}>
+              {t('findingPoint', 'point {{n}}', { n: finding.where, interpolation: { escapeValue: false } })}
+            </span>
           )}{' '}
           {finding.says}
         </li>

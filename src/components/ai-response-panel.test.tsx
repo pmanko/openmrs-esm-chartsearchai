@@ -2262,7 +2262,9 @@ describe('AiResponsePanel per-section confidence', () => {
         confidence={{
           answer: {
             level: null,
-            findings: [{ check: 'agreement', where: 'answer', status: 'fail', says: 'The second writer states 74 kg.' }],
+            findings: [
+              { check: 'agreement', where: 'answer', status: 'fail', says: 'The second writer states 74 kg.' },
+            ],
           },
         }}
       />,
