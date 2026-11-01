@@ -50,6 +50,7 @@
   "findingCheckDate": "Date check",
   "findingCheckRecord": "Record check",
   "findingCheckReview": "Model review",
+  "findingCheckRule": "Rule check",
   "findingPoint": "point {{n}}",
   "grounded": "Verified",
   "groundedSourceSetTitle": "Supports this claim together with the other cited records.",

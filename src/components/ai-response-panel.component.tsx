@@ -84,7 +84,7 @@ interface AiResponsePanelProps extends AiAnswerLimits {
   patientUuid: string;
   /** Hub product profile that produced this answer; shown as a subtle faded tag. */
   resolvedModel?: string;
-  /** Per-section check confidence (checked hub profiles); rendered as green/yellow/red chips. */
+  /** Per-section check confidence (optional grade chip or individual findings under the policy). */
   confidence?: AiConfidence;
   /** Staged answer check lifecycle; rendered as the primary Answer badge when present. */
   answerValidation?: AiAnswerValidation;
@@ -520,8 +520,9 @@ const IN_DEPTH_RE = /\*\*In ?Depth\*\*/i;
 
 /**
  * Split the hub's combined answer body (`**Answer**` … `**In Depth**` …) into its two
- * sections, stripping the redundant markdown header from each — the confidence chip is the
- * section heading now. If there's no In-Depth marker, the whole body is the Answer section.
+ * sections, stripping the redundant markdown header from each — `ConfidenceSection` renders the
+ * section heading and any grade or findings now. Without an In-Depth marker, the whole body is
+ * the Answer section.
  */
 function splitSections(answer: string): { answerBody: string; inDepthBody: string | null } {
   const stripAnswerHeader = (s: string) => s.replace(/^\s*\*\*Answer\*\*\s*/i, '').trim();
@@ -549,6 +550,8 @@ function findingCheckLabel(check: string, t: Translate): string {
       return t('findingCheckCitation', 'Citation support');
     case 'record':
       return t('findingCheckRecord', 'Record check');
+    case 'rule':
+      return t('findingCheckRule', 'Rule check');
     case 'agreement':
       return t('findingCheckAgreement', 'Second writer');
     default:
@@ -556,23 +559,47 @@ function findingCheckLabel(check: string, t: Translate): string {
   }
 }
 
+function findingStatusClass(status: string | undefined): string {
+  switch (status) {
+    case 'info':
+      return styles.findingInfo;
+    case 'fail':
+      return styles.findingFail;
+    default:
+      return styles.findingWarn;
+  }
+}
+
+function normalizeFindings(findings: unknown): AiFinding[] {
+  if (!Array.isArray(findings)) {
+    return [];
+  }
+  return findings.filter((finding): finding is AiFinding => Boolean(finding && typeof finding === 'object'));
+}
+
 /** Section findings replace the grade under the findings policy. */
 const FindingsList: React.FC<{ findings: AiFinding[] }> = ({ findings }) => {
   const { t } = useTranslation();
+  const items = normalizeFindings(findings);
+  if (items.length === 0) {
+    return null;
+  }
   return (
     <ul className={styles.findings} data-testid="findings">
-      {findings.map((finding, index) => (
+      {items.map((finding, index) => (
         <li
-          key={`${finding.check}-${String(finding.where)}-${index}`}
-          className={finding.status === 'info' ? styles.findingInfo : styles.findingFail}
+          key={`${String(finding.check ?? '')}-${String(finding.where ?? '')}-${index}`}
+          className={findingStatusClass(finding.status)}
         >
-          <span className={styles.findingCheck}>{findingCheckLabel(finding.check, t)}</span>
-          {typeof finding.where === 'number' && (
+          <span className={styles.findingCheck}>
+            {typeof finding.check === 'string' ? findingCheckLabel(finding.check, t) : ''}
+          </span>
+          {typeof finding.where === 'number' && Number.isInteger(finding.where) && finding.where > 0 && (
             <span className={styles.findingWhere}>
               {t('findingPoint', 'point {{n}}', { n: finding.where, interpolation: { escapeValue: false } })}
             </span>
           )}{' '}
-          {finding.says}
+          {typeof finding.says === 'string' ? finding.says : ''}
         </li>
       ))}
     </ul>
@@ -680,8 +707,8 @@ const ConfidenceSection: React.FC<{
   // Under the Hub's findings policy the section carries no grade: no chip, the findings listed.
   const graded = section?.level != null;
   const level = section?.level ?? 'green';
-  const note = graded ? (section?.note ?? '') : '';
-  const findings = section?.findings ?? [];
+  const note = section?.note ?? '';
+  const findings = normalizeFindings(section?.findings);
   const rendered = (
     <MarkdownAnswer answer={body} references={references} patientUuid={patientUuid} decorations={decorations} />
   );

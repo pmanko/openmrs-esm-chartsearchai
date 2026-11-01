@@ -434,7 +434,7 @@ export type AiBlock = AiTableBlock;
 
 /** A check finding with its location in the answer or an In-Depth point. */
 export interface AiFinding {
-  check: 'date' | 'review' | 'citation' | 'record' | string;
+  check: 'date' | 'review' | 'citation' | 'record' | 'rule' | 'agreement' | string;
   where: 'answer' | number | string;
   status?: 'fail' | 'warn' | 'info' | string;
   says: string;
@@ -509,7 +509,7 @@ export interface AiSearchResponse {
   messageId?: string;
   /** Product profile id that produced this answer. */
   resolvedModel?: string;
-  /** Per-section check confidence (green/yellow/red + note) from checked hub profiles. */
+  /** Per-section check confidence (optional grade, note, or findings under the selected policy). */
   confidence?: AiConfidence;
   /** Clinician-facing answer check lifecycle for staged checked responses. */
   answerValidation?: AiAnswerValidation;
