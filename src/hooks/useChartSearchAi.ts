@@ -86,7 +86,7 @@ export interface ChatMessage extends MessageAnswerLimits {
    * per-response tag. Undefined for older rows or system notices.
    */
   resolvedModel?: string;
-  /** Per-section check confidence (green/yellow/red + note); checked hub profiles only. */
+  /** Per-section check confidence (optional grade, note, or findings under the selected policy). */
   confidence?: AiConfidence;
   /** Answer check lifecycle for staged checked responses. */
   answerValidation?: AiAnswerValidation;

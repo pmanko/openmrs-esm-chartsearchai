@@ -2225,6 +2225,141 @@ describe('AiResponsePanel per-section confidence', () => {
     expect(screen.getByTestId('section-in-depth')).toHaveTextContent('Medium confidence');
   });
 
+  it('shows no confidence chip and lists what the checks found', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: {
+            level: null,
+            note: '',
+            findings: [
+              { check: 'citation', where: 'answer', status: 'info', says: '[21] does not hold: 52 kg on 2025-10-22.' },
+              {
+                check: 'citation',
+                where: 'answer',
+                status: 'warn',
+                says: 'Citation support could not be checked within the grounding limits.',
+              },
+              {
+                check: 'rule',
+                where: 'answer',
+                status: 'fail',
+                says: 'Drug order claim does not match active orders.',
+              },
+            ],
+          },
+          in_depth: {
+            level: null,
+            note: '',
+            findings: [
+              { check: 'review', where: 1, says: 'flagged on review' },
+              { check: 'date', where: 3, status: 'fail', says: 'the chart does not give 41 on 2025-10-22' },
+            ],
+          },
+        }}
+      />,
+    );
+    const answer = screen.getByTestId('section-answer');
+    expect(answer).not.toHaveTextContent('confidence');
+    expect(answer).toHaveTextContent('Citation support');
+    expect(answer).toHaveTextContent('52 kg on 2025-10-22');
+    expect(answer).toHaveTextContent('Rule check');
+    expect(answer).toHaveTextContent('Drug order claim does not match active orders.');
+    const answerItems = within(answer).getAllByRole('listitem');
+    expect(answerItems[0]).toHaveClass('findingInfo');
+    expect(answerItems[0]).toHaveTextContent('Informational:');
+    expect(answerItems[1]).toHaveClass('findingWarn');
+    expect(answerItems[1]).toHaveTextContent('Warning:');
+    expect(answerItems[2]).toHaveClass('findingFail');
+    expect(answerItems[2]).toHaveTextContent('Failed:');
+
+    const inDepth = screen.getByTestId('section-in-depth');
+    expect(inDepth).not.toHaveTextContent('confidence');
+    expect(inDepth).toHaveTextContent('Model review');
+    expect(inDepth).toHaveTextContent('point 1');
+    expect(inDepth).toHaveTextContent('Date check');
+    expect(inDepth).toHaveTextContent('point 3');
+    const inDepthItems = within(inDepth).getAllByRole('listitem');
+    expect(inDepthItems[0]).toHaveClass('findingWarn');
+    expect(inDepthItems[0]).toHaveTextContent('Warning:');
+    expect(inDepthItems[1]).toHaveClass('findingFail');
+    expect(inDepthItems[1]).toHaveTextContent('Failed:');
+  });
+
+  it('names a second-writer disagreement as such', () => {
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: {
+            level: null,
+            findings: [
+              { check: 'agreement', where: 'answer', status: 'fail', says: 'The second writer states 74 kg.' },
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('Second writer');
+    expect(screen.getByTestId('section-answer')).toHaveTextContent('74 kg');
+  });
+
+  it('ignores malformed findings and omits point labels for invalid locations', () => {
+    for (const malformed of [
+      'bad',
+      [null],
+      {},
+      [
+        {},
+        { says: 42 },
+        { check: '', where: 'answer', says: 'empty check' },
+        { check: 'date', where: '', says: 'empty where' },
+        { check: 'date', where: 'answer', says: '' },
+        { check: 'date', where: 'answer', status: 'bogus', says: 'invalid status' },
+      ],
+    ]) {
+      const { unmount } = render(
+        <AiResponsePanel
+          {...baseProps}
+          confidence={{
+            answer: {
+              level: null,
+              findings: malformed as unknown as [],
+            },
+          }}
+        />,
+      );
+      expect(screen.queryByTestId('findings')).not.toBeInTheDocument();
+      unmount();
+    }
+
+    render(
+      <AiResponsePanel
+        {...baseProps}
+        confidence={{
+          answer: {
+            level: null,
+            findings: [
+              { check: 'date', where: -1, status: 'fail', says: 'negative point' },
+              { check: 'date', where: 0, status: 'fail', says: 'zero point' },
+              { check: 'date', where: 1.5, status: 'fail', says: 'fractional point' },
+              { check: 'date', where: '3', status: 'fail', says: 'string point' },
+            ],
+          },
+        }}
+      />,
+    );
+    const answer = screen.getByTestId('section-answer');
+    expect(answer).toHaveTextContent('negative point');
+    expect(answer).toHaveTextContent('zero point');
+    expect(answer).toHaveTextContent('fractional point');
+    expect(answer).toHaveTextContent('string point');
+    expect(answer).not.toHaveTextContent(/point\s+-?1/);
+    expect(answer).not.toHaveTextContent(/point\s+0/);
+    expect(answer).not.toHaveTextContent(/point\s+3/);
+  });
+
   it('YELLOW (med): shows the message, collapses the review note behind a reveal', () => {
     render(
       <AiResponsePanel
