@@ -570,11 +570,39 @@ function findingStatusClass(status: string | undefined): string {
   }
 }
 
+function findingStatusLabel(status: string | undefined, t: Translate): string {
+  switch (status) {
+    case 'info':
+      return t('findingStatusInfo', 'Informational:');
+    case 'fail':
+      return t('findingStatusFail', 'Failed:');
+    default:
+      return t('findingStatusWarn', 'Warning:');
+  }
+}
+
+const FINDING_STATUSES = new Set(['fail', 'warn', 'info']);
+
+function isValidFinding(value: unknown): value is AiFinding {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const hasValidCheck = typeof candidate.check === 'string' && candidate.check.trim().length > 0;
+  const hasValidWhere =
+    (typeof candidate.where === 'string' && candidate.where.trim().length > 0) ||
+    (typeof candidate.where === 'number' && Number.isFinite(candidate.where));
+  const hasValidSays = typeof candidate.says === 'string' && candidate.says.trim().length > 0;
+  const hasValidStatus =
+    candidate.status === undefined || (typeof candidate.status === 'string' && FINDING_STATUSES.has(candidate.status));
+  return hasValidCheck && hasValidWhere && hasValidSays && hasValidStatus;
+}
+
 function normalizeFindings(findings: unknown): AiFinding[] {
   if (!Array.isArray(findings)) {
     return [];
   }
-  return findings.filter((finding): finding is AiFinding => Boolean(finding && typeof finding === 'object'));
+  return findings.filter(isValidFinding);
 }
 
 /** Section findings replace the grade under the findings policy. */
@@ -587,19 +615,15 @@ const FindingsList: React.FC<{ findings: AiFinding[] }> = ({ findings }) => {
   return (
     <ul className={styles.findings} data-testid="findings">
       {items.map((finding, index) => (
-        <li
-          key={`${String(finding.check ?? '')}-${String(finding.where ?? '')}-${index}`}
-          className={findingStatusClass(finding.status)}
-        >
-          <span className={styles.findingCheck}>
-            {typeof finding.check === 'string' ? findingCheckLabel(finding.check, t) : ''}
-          </span>
+        <li key={`${finding.check}-${String(finding.where)}-${index}`} className={findingStatusClass(finding.status)}>
+          <span className={styles.findingStatus}>{findingStatusLabel(finding.status, t)}</span>{' '}
+          <span className={styles.findingCheck}>{findingCheckLabel(finding.check, t)}</span>
           {typeof finding.where === 'number' && Number.isInteger(finding.where) && finding.where > 0 && (
             <span className={styles.findingWhere}>
               {t('findingPoint', 'point {{n}}', { n: finding.where, interpolation: { escapeValue: false } })}
             </span>
           )}{' '}
-          {typeof finding.says === 'string' ? finding.says : ''}
+          {finding.says}
         </li>
       ))}
     </ul>

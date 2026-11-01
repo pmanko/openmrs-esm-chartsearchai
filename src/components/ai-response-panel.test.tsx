@@ -2268,8 +2268,11 @@ describe('AiResponsePanel per-section confidence', () => {
     expect(answer).toHaveTextContent('Drug order claim does not match active orders.');
     const answerItems = within(answer).getAllByRole('listitem');
     expect(answerItems[0]).toHaveClass('findingInfo');
+    expect(answerItems[0]).toHaveTextContent('Informational:');
     expect(answerItems[1]).toHaveClass('findingWarn');
+    expect(answerItems[1]).toHaveTextContent('Warning:');
     expect(answerItems[2]).toHaveClass('findingFail');
+    expect(answerItems[2]).toHaveTextContent('Failed:');
 
     const inDepth = screen.getByTestId('section-in-depth');
     expect(inDepth).not.toHaveTextContent('confidence');
@@ -2279,7 +2282,9 @@ describe('AiResponsePanel per-section confidence', () => {
     expect(inDepth).toHaveTextContent('point 3');
     const inDepthItems = within(inDepth).getAllByRole('listitem');
     expect(inDepthItems[0]).toHaveClass('findingWarn');
+    expect(inDepthItems[0]).toHaveTextContent('Warning:');
     expect(inDepthItems[1]).toHaveClass('findingFail');
+    expect(inDepthItems[1]).toHaveTextContent('Failed:');
   });
 
   it('names a second-writer disagreement as such', () => {
@@ -2301,7 +2306,19 @@ describe('AiResponsePanel per-section confidence', () => {
   });
 
   it('ignores malformed findings and omits point labels for invalid locations', () => {
-    for (const malformed of ['bad', [null], {}]) {
+    for (const malformed of [
+      'bad',
+      [null],
+      {},
+      [
+        {},
+        { says: 42 },
+        { check: '', where: 'answer', says: 'empty check' },
+        { check: 'date', where: '', says: 'empty where' },
+        { check: 'date', where: 'answer', says: '' },
+        { check: 'date', where: 'answer', status: 'bogus', says: 'invalid status' },
+      ],
+    ]) {
       const { unmount } = render(
         <AiResponsePanel
           {...baseProps}
