@@ -8,6 +8,14 @@
   gap: spacing.$spacing-04;
 }
 
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: spacing.$spacing-03;
+  flex-wrap: wrap;
+}
+
 .heading {
   @include type.type-style('heading-compact-02');
   color: theme.$text-primary;

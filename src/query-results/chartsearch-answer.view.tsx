@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, InlineLoading } from '@carbon/react';
-import { useConfig } from '@openmrs/esm-framework';
+import { useConfig, useStore } from '@openmrs/esm-framework';
 import { chatPatientChartStream, type AiSearchResponse } from '../api/chartsearchai';
 import AiReasoningDisclosure from '../components/ai-reasoning-disclosure.component';
 import AiResponsePanel from '../components/ai-response-panel.component';
+import ModelPicker from '../components/model-picker.component';
 import { type ChartSearchAiConfig } from '../config-schema';
+import { useHubProfileDiscovery } from '../hooks/hub-profile-discovery';
 import { refreshSystemProvider, useSystemProviderDiscovery } from '../hooks/system-provider-discovery';
 import { isAwaitingAnswer, isTerminal } from '../hooks/turn-phase';
 import {
@@ -61,6 +63,9 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
   const headingId = useId();
   const config = useConfig<ChartSearchAiConfig>();
   const systemProvider = useSystemProviderDiscovery();
+  const { selectedProfileId, profileDiscoveryStatus, profileExplicitlySelected } = useStore(chatSessionStore);
+  const lastTurnProfileRef = useRef<string | null>(null);
+  useHubProfileDiscovery(systemProvider.providerId);
 
   const patientUuid = context.scope === 'patient' ? context.patientUuid : undefined;
   const trimmedQuestion = query.trim();
@@ -104,6 +109,7 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
     setMessage(null);
     setHasRequested(Boolean(submitted));
     setAttempt(0);
+    lastTurnProfileRef.current = null;
   }, [patientUuid, trimmedQuestion, submitted]);
 
   const providerResolved = systemProvider.status !== 'loading';
@@ -125,6 +131,7 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
         providerId === 'hub' && storeState.profileDiscoveryStatus === 'ready' && storeState.selectedProfileId
           ? storeState.selectedProfileId
           : undefined;
+      lastTurnProfileRef.current = profileId ?? null;
       const capabilities = providerId ? storeState.providerCapabilities?.[providerId] : undefined;
 
       msgCounterRef.current += 1;
@@ -295,6 +302,20 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
   );
 
   useEffect(() => {
+    if (
+      !hasRequested ||
+      systemProvider.providerId !== 'hub' ||
+      profileDiscoveryStatus !== 'ready' ||
+      !profileExplicitlySelected ||
+      !selectedProfileId ||
+      lastTurnProfileRef.current === selectedProfileId
+    ) {
+      return;
+    }
+    setAttempt((n) => n + 1);
+  }, [hasRequested, systemProvider.providerId, profileDiscoveryStatus, profileExplicitlySelected, selectedProfileId]);
+
+  useEffect(() => {
     if (!shouldOffer || !patientUuid || !trimmedQuestion || !hasRequested || signal?.aborted || !providerResolved) {
       return undefined;
     }
@@ -349,9 +370,12 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
 
   return (
     <section aria-labelledby={headingId} className={styles.section}>
-      <h3 id={headingId} className={styles.heading}>
-        {t('chartSearchHeading', 'ChartSearch')}
-      </h3>
+      <div className={styles.headerRow}>
+        <h3 id={headingId} className={styles.heading}>
+          {t('chartSearchHeading', 'ChartSearch')}
+        </h3>
+        <ModelPicker />
+      </div>
       <p className={styles.question} dir="auto">
         {trimmedQuestion}
       </p>

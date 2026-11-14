@@ -1177,6 +1177,7 @@ export async function startNewChat(
 export interface HubProfileMetadata {
   id: string;
   label: string;
+  description?: string;
   staged: boolean;
   validation: boolean;
   temporal_enforcement: 'off' | 'warn' | 'enforce' | string;

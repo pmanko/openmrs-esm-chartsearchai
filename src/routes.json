@@ -26,6 +26,21 @@
         "commandAsksModel": true,
         "command": { "id": "ask", "aliases": ["ask", "question"] }
       }
+    },
+    {
+      "name": "chartsearch-model-provider",
+      "component": "chartSearchModelProvider",
+      "slot": "omnibar-providers-slot",
+      "privileges": ["AI Query Patient Data"],
+      "meta": {
+        "lane": "navigate",
+        "scopes": ["global", "patient"],
+        "order": 20,
+        "defaultInChart": true,
+        "contract": 1,
+        "skipIdentifierQueries": true,
+        "command": { "id": "model", "aliases": ["model", "models", "profile"] }
+      }
     }
   ],
   "workspaces2": [

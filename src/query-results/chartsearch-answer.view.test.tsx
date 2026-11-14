@@ -299,6 +299,22 @@ describe('the Ask ChartSearch view', () => {
             },
           });
         }
+        if (url.includes('/ws/rest/v1/chartsearchai/models')) {
+          return Promise.resolve({
+            data: {
+              object: 'list',
+              data: [
+                {
+                  id: 'hiv-care',
+                  label: 'HIV care',
+                  visibility: 'product',
+                  available: true,
+                  default: true,
+                },
+              ],
+            },
+          });
+        }
         return Promise.resolve({ data: {} });
       });
       chatSessionStore.setState({
@@ -324,6 +340,74 @@ describe('the Ask ChartSearch view', () => {
       });
     });
 
+    it('renders ModelPicker when Hub presets load and re-runs the active turn on explicit preset change', async () => {
+      mockOpenmrsFetch.mockImplementation((url: string) => {
+        if (url.includes('/ws/rest/v1/chartsearchai/providers')) {
+          return Promise.resolve({
+            data: {
+              providers: [{ id: 'hub', name: 'AI Hub', enabled: true, ready: true }],
+              defaultProvider: 'hub',
+              pickerVisible: false,
+            },
+          });
+        }
+        if (url.includes('/ws/rest/v1/chartsearchai/models')) {
+          return Promise.resolve({
+            data: {
+              object: 'list',
+              data: [
+                {
+                  id: 'gemma-4-12b',
+                  label: 'Gemma 4 12B',
+                  visibility: 'product',
+                  available: true,
+                  default: true,
+                  selection_priority: 10,
+                },
+                {
+                  id: 'gemma-4-e4b',
+                  label: 'Gemma 4 E4B (Fast)',
+                  visibility: 'product',
+                  available: true,
+                  default: false,
+                  selection_priority: 20,
+                },
+                {
+                  id: 'qwen-3.5-9b',
+                  label: 'Qwen 3.5 9B',
+                  visibility: 'product',
+                  available: true,
+                  default: false,
+                  selection_priority: 30,
+                },
+              ],
+            },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+      fetchMock.mockImplementation(() => {
+        const stream = streamingResponse();
+        stream.write(frame('turn_done', turnEnvelope({ answer: 'On TDF/3TC/DTG.', references: [] })));
+        stream.end();
+        return Promise.resolve(stream.response);
+      });
+
+      const user = userEvent.setup();
+      renderView('Current medications?', true);
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      const pickerButton = await screen.findByRole('button', { name: /AI profile: Gemma 4 12B/i });
+      expect(pickerButton).toHaveTextContent('Gemma 4 12B');
+
+      await user.click(pickerButton);
+      await user.click(await screen.findByText('Qwen 3.5 9B'));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+      expect(secondBody.profile).toBe('qwen-3.5-9b');
+    });
+
     it('omits profile when Hub profile discovery is not ready so the backend resolves its default', async () => {
       mockOpenmrsFetch.mockImplementation((url: string) => {
         if (url.includes('/ws/rest/v1/chartsearchai/providers')) {
@@ -334,6 +418,9 @@ describe('the Ask ChartSearch view', () => {
               pickerVisible: false,
             },
           });
+        }
+        if (url.includes('/ws/rest/v1/chartsearchai/models')) {
+          return new Promise(() => {});
         }
         return Promise.resolve({ data: {} });
       });
