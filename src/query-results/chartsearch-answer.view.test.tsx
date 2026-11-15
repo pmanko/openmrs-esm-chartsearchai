@@ -6,6 +6,7 @@ import { getDefaultsFromConfigSchema, openmrsFetch, useConfig } from '@openmrs/e
 import { type ChartSearchAiConfig, configSchema } from '../config-schema';
 import { type OmnibarViewProps, type OmnibarViewState } from '../omnibar-contract/types';
 import { chatSessionStore, initialChatSessionState } from '../store/chat-session.store';
+import { maxAnswerCharacters, maxStreamBytes } from '../api/chartsearchai';
 import ChartSearchAnswerView from './chartsearch-answer.view';
 
 vi.mock('@openmrs/esm-framework', async (importOriginal) => ({
@@ -743,6 +744,53 @@ describe('the Ask ChartSearch view', () => {
       } finally {
         consoleSpies.forEach((spy) => spy.mockRestore());
       }
+    });
+
+    it('hides preliminary reasoning text and committed reasoning when showReasoning is false', async () => {
+      vi.mocked(useConfig).mockReturnValue({ ...defaults(), showReasoning: false });
+      const stream = streamingResponse();
+      fetchMock.mockResolvedValue(stream.response);
+      renderView(question, true);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+      await act(async () => stream.write(frame('preliminary_delta', 'Secret clinical chart snippet')));
+      expect(screen.getByText('Reviewing the most relevant records…')).toBeInTheDocument();
+      expect(screen.queryByText(/Secret clinical chart snippet/)).not.toBeInTheDocument();
+
+      await act(async () => stream.write(frame('reasoning_delta', 'Secret chain of thought')));
+      expect(screen.queryByText(/Secret chain of thought/)).not.toBeInTheDocument();
+
+      await act(async () => stream.write(frame('turn_done', turnEnvelope())));
+      await act(async () => stream.end());
+      expect(await screen.findByText(/ART started on 3 March 2024/)).toBeInTheDocument();
+    });
+
+    it('aborts /chat/stream responses that exceed maxStreamBytes', async () => {
+      const stream = streamingResponse();
+      fetchMock.mockResolvedValue(stream.response);
+      renderView(question, true);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+      await act(async () => stream.write('a'.repeat(maxStreamBytes + 1)));
+      expect(
+        await screen.findByText(
+          'The AI service sent a response this panel could not read. Please try again or contact your administrator.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('caps streamed and settled answer text at maxAnswerCharacters', async () => {
+      const stream = streamingResponse();
+      fetchMock.mockResolvedValue(stream.response);
+      renderView(question, true);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+      const oversized = 'A'.repeat(maxAnswerCharacters + 500);
+      await act(async () => stream.write(frame('answer_delta', oversized)));
+      await act(async () => stream.write(frame('turn_done', turnEnvelope({ answer: oversized, references: [] }))));
+      await act(async () => stream.end());
+
+      expect(await screen.findByText(new RegExp(`^A{${maxAnswerCharacters}}$`))).toBeInTheDocument();
     });
   });
 });

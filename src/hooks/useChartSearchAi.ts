@@ -13,6 +13,7 @@ import {
   type ChatHistoryMessage,
   chatPatientChartStream,
   fetchChatHistory,
+  maxAnswerCharacters,
   startNewChat,
 } from '../api/chartsearchai';
 import { type ChartSearchAiConfig } from '../config-schema';
@@ -348,9 +349,10 @@ export function stripPreviewCitations(text: string): string {
 }
 
 export function applyTurnEnvelope(message: ChatMessage, payload: TurnEnvelope, phase: TurnPhase): ChatMessage {
+  const rawAnswer = payload.answer ?? message.answer;
   return {
     ...message,
-    answer: payload.answer ?? message.answer,
+    answer: rawAnswer.length > maxAnswerCharacters ? rawAnswer.slice(0, maxAnswerCharacters) : rawAnswer,
     // Absence means this event has no reference update. An explicit array is authoritative even
     // when empty: answer validation may remove every draft citation when it edits the answer.
     references: Array.isArray(payload.references) ? payload.references : message.references,
@@ -848,7 +850,12 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
               if (idx === -1 || prev[idx].phase !== 'answering') return prev;
               const updated = [...prev];
               // The answer supersedes the provisional preview.
-              updated[idx] = { ...updated[idx], answer: updated[idx].answer + chunk, preliminaryReasoning: '' };
+              const nextAnswer = updated[idx].answer + chunk;
+              updated[idx] = {
+                ...updated[idx],
+                answer: nextAnswer.length > maxAnswerCharacters ? nextAnswer.slice(0, maxAnswerCharacters) : nextAnswer,
+                preliminaryReasoning: '',
+              };
               return updated;
             });
           },

@@ -26,6 +26,7 @@ import { refreshHubProfiles, useHubProfileDiscovery } from './hub-profile-discov
 vi.mock('../api/chartsearchai', () => ({
   chatPatientChartStream: vi.fn(),
   fetchChatHistory: vi.fn(),
+  maxAnswerCharacters: 50_000,
   startNewChat: vi.fn(),
 }));
 // Discovery itself is covered in hub-profile-discovery.test.ts; here only the hook's use of it.

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, InlineLoading } from '@carbon/react';
 import { useConfig, useStore } from '@openmrs/esm-framework';
-import { chatPatientChartStream, type AiSearchResponse } from '../api/chartsearchai';
+import { chatPatientChartStream, maxAnswerCharacters, type AiSearchResponse } from '../api/chartsearchai';
 import AiReasoningDisclosure from '../components/ai-reasoning-disclosure.component';
 import AiResponsePanel from '../components/ai-response-panel.component';
 import ModelPicker from '../components/model-picker.component';
@@ -74,6 +74,16 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
   const [message, setMessage] = useState<ChatMessage | null>(null);
   const [hasRequested, setHasRequested] = useState(Boolean(submitted));
   const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!showReasoning) {
+      setMessage((prev) =>
+        prev && (prev.preliminaryReasoning || prev.reasoning)
+          ? { ...prev, preliminaryReasoning: '', reasoning: '' }
+          : prev,
+      );
+    }
+  }, [showReasoning]);
 
   const shouldOffer = useChartSearchOffer(trimmedQuestion, patientUuid, hints, context.command?.id === 'ask');
 
@@ -174,11 +184,12 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
           onToken: (delta) => {
             updateIfCurrent((prev) => {
               if (isTerminal(prev.phase)) return prev;
+              const nextAnswer = prev.answer + delta;
               return {
                 ...prev,
                 phase: 'answering',
                 preliminaryReasoning: '',
-                answer: prev.answer + delta,
+                answer: nextAnswer.length > maxAnswerCharacters ? nextAnswer.slice(0, maxAnswerCharacters) : nextAnswer,
               };
             });
           },
@@ -412,7 +423,8 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
             <div className={styles.loadingRow} role="status">
               <InlineLoading
                 description={
-                  message.preliminaryReasoning || t('preliminaryReasoning', 'Reviewing the most relevant records…')
+                  (showReasoning && message.preliminaryReasoning) ||
+                  t('preliminaryReasoning', 'Reviewing the most relevant records…')
                 }
               />
             </div>

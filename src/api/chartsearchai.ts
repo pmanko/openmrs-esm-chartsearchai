@@ -24,6 +24,15 @@ export const STREAMING_UNSUPPORTED_ERROR_CODE = 'chartsearchai:streaming-unsuppo
 export const STREAM_REQUEST_FAILED_ERROR_CODE = 'chartsearchai:request-failed';
 /** The request could not be sent, or the connection broke while the stream was open. */
 export const STREAM_CONNECTION_FAILED_ERROR_CODE = 'chartsearchai:connection-failed';
+/** Byte and answer-character caps on SSE responses so runaway streams cannot exhaust memory. */
+export const maxStreamBytes = 2_000_000;
+export const maxAnswerCharacters = 50_000;
+
+function capAnswerEnvelope<T extends Partial<AiSearchResponse>>(payload: T): T {
+  return typeof payload.answer === 'string' && payload.answer.length > maxAnswerCharacters
+    ? { ...payload, answer: payload.answer.slice(0, maxAnswerCharacters) }
+    : payload;
+}
 
 export interface AiReference {
   index: number;
@@ -901,6 +910,8 @@ export function chatPatientChartStream(
       let dataLines: string[] = [];
       let streamFinalized = false;
       let highestStage = 0;
+      let bytesRead = 0;
+      let deliveredAnswerCharacters = 0;
 
       const failStream = (message: string) => {
         streamFinalized = true;
@@ -950,27 +961,34 @@ export function chatPatientChartStream(
           callbacks.onPreliminary?.(data);
         } else if (eventType === 'answer_delta') {
           // Raw text, not JSON: the server frames each token as one `data:` line per text line.
-          callbacks.onToken?.(data);
+          const remaining = maxAnswerCharacters - deliveredAnswerCharacters;
+          if (remaining > 0) {
+            const bounded = data.length > remaining ? data.slice(0, remaining) : data;
+            deliveredAnswerCharacters += bounded.length;
+            callbacks.onToken?.(bounded);
+          }
         } else if (eventType === 'reasoning_delta') {
           callbacks.onReasoning?.(data);
         } else if (eventType === 'answer_done') {
           try {
             const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
-            callbacks.onAnswerDone?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+            callbacks.onAnswerDone?.(capAnswerEnvelope({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model }));
           } catch {
             failStream(STREAM_INVALID_ERROR_CODE);
           }
         } else if (eventType === 'answer_validation') {
           try {
             const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
-            callbacks.onAnswerValidation?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+            callbacks.onAnswerValidation?.(
+              capAnswerEnvelope({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model }),
+            );
           } catch {
             failStream(STREAM_INVALID_ERROR_CODE);
           }
         } else if (eventType === 'evidence_updated') {
           try {
             const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
-            callbacks.onEvidenceUpdated?.({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+            callbacks.onEvidenceUpdated?.(capAnswerEnvelope({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model }));
           } catch {
             failStream(STREAM_INVALID_ERROR_CODE);
           }
@@ -1019,7 +1037,7 @@ export function chatPatientChartStream(
             // validation, evidence, or In-Depth correction reaches the live UI.
             const raw = JSON.parse(data) as AiSearchResponse & { model?: string };
             if (typeof raw.answer !== 'string') throw new Error('missing final answer');
-            callbacks.onDone({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model });
+            callbacks.onDone(capAnswerEnvelope({ ...raw, resolvedModel: raw.resolvedModel ?? raw.model }));
           } catch {
             failStream(STREAM_INVALID_ERROR_CODE);
           }
@@ -1040,6 +1058,11 @@ export function chatPatientChartStream(
         while (!streamFinalized) {
           const { done, value } = await streamReader.read();
           if (done) break;
+          bytesRead += value.byteLength;
+          if (bytesRead > maxStreamBytes) {
+            failStream(STREAM_INVALID_ERROR_CODE);
+            break;
+          }
 
           buffer += textDecoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
