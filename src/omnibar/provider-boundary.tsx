@@ -1,4 +1,4 @@
-import { Component, type ComponentType, type FC, type ReactNode, useCallback, useRef } from 'react';
+import React, { Component, type ComponentType, type FC, type ReactNode, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type OmnibarProviderProps, type OmnibarReport } from '../omnibar-contract/types';
 

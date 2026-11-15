@@ -1,4 +1,6 @@
 import React from 'react';
+import fs from 'node:fs';
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { getDefaultsFromConfigSchema, openmrsFetch, showSnackbar, useConfig } from '@openmrs/esm-framework';
@@ -14,6 +16,7 @@ import {
   resetOmnibarProfileNotifications,
   setupOmnibarProfileSelectionListener,
 } from './omnibar-profile-selection';
+import { withProviderBoundary } from './provider-boundary';
 
 const mockOpenmrsFetch = openmrsFetch as Mock;
 const mockShowSnackbar = showSnackbar as Mock;
@@ -169,5 +172,59 @@ describe('ChartSearchModelProvider (/model Omnibar command)', () => {
 
     teardownListener();
     teardownListener = null;
+  });
+
+  it('wraps ChartSearchModelProvider in withProviderBoundary and catches provider render errors without propagating', async () => {
+    mockHubDiscovery();
+    const report = vi.fn();
+    const context: OmnibarContext = {
+      scope: 'patient',
+      patientUuid: 'patient-1',
+      locale: 'en',
+      command: { id: 'model' },
+    };
+    const BoundedProvider = withProviderBoundary(ChartSearchModelProvider, 'chartsearch-model-provider');
+
+    render(<BoundedProvider query="" context={context} report={report} />);
+
+    await waitFor(() => {
+      const latest = report.mock.calls.at(-1)?.[0];
+      expect(latest?.status).toBe('ready');
+      expect(latest?.results).toHaveLength(3);
+    });
+
+    const ThrowingProvider: React.FC = () => {
+      throw new Error('boom');
+    };
+    const BoundedThrower = withProviderBoundary(ThrowingProvider, 'throwing-provider');
+    const errorReport = vi.fn();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      render(<BoundedThrower query="e4b" context={context} report={errorReport} />);
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    expect(errorReport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: 'e4b',
+        status: 'error',
+        title: 'Results',
+      }),
+    );
+  });
+
+  it('imports default React in every JSX-bearing .tsx module in src/omnibar for Rspack classic JSX', () => {
+    const jsxFiles = fs
+      .readdirSync(__dirname)
+      .filter((name) => /\.tsx$/.test(name) && !/\.test\.tsx$/.test(name))
+      .map((name) => ({ name, source: fs.readFileSync(path.join(__dirname, name), 'utf8') }))
+      .filter(({ source }) => /(?:^|[\s(?:])<\/?[A-Za-z][A-Za-z0-9]*(?=[\s/>])/m.test(source));
+
+    expect(jsxFiles.length).toBeGreaterThan(0);
+
+    const offenders = jsxFiles.filter(({ source }) => !/^import\s+React\b/m.test(source)).map(({ name }) => name);
+
+    expect(offenders).toEqual([]);
   });
 });
