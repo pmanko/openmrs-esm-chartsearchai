@@ -451,7 +451,10 @@ export interface AiTableBlock {
 
 export type AiBlock = AiTableBlock;
 
-/** One section's validator confidence: a traffic-light level (null when ungraded) + optional note/findings. */
+/**
+ * One section's validator confidence: a traffic-light level
+ * (`null` when ungraded) + optional note/findings.
+ */
 export interface AiConfidenceSection {
   level?: 'green' | 'yellow' | 'red' | null;
   note?: string;
