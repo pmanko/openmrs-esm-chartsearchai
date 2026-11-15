@@ -22,7 +22,7 @@ import {
   STREAMING_UNSUPPORTED_ERROR_CODE,
 } from '../api/chartsearchai';
 import { compactChips, notInTheAnswer, rewordedInTheAnswer } from '../utils/compact-chips';
-import { safetyIssueText, safetyStatusTag, SUPPRESSED_SAFETY_ISSUES } from '../utils/safety-check-wording';
+import { safetyIssueText, SUPPRESSED_SAFETY_ISSUES } from '../utils/safety-check-wording';
 import {
   citationGroupPattern,
   citationStripPattern,
@@ -70,8 +70,7 @@ interface AiResponsePanelProps extends AiAnswerLimits {
   answer: string;
   references: AiReference[];
   safetyWarnings?: AiSafetyWarning[];
-  /** checked/limited/unavailable. Limited and unavailable remain visible with no warnings;
-   *  checked-clean may stay quiet, so inability to run is never mistaken for a clean check. */
+  /** checked/limited/unavailable; non-warning runs stay quiet without a status banner. */
   safetyStatus?: AiSafetyStatus;
   /** Canonical safety result; explains package approval and coverage limitations. */
   safetyCheck?: AiSafetyCheck;
@@ -267,129 +266,23 @@ function attachedForOf(ref: AiReference, citedFindings: ReadonlySet<number>): nu
   return ref.attachedFor.filter((index): index is number => Number.isInteger(index) && citedFindings.has(index));
 }
 
-function evidenceTitle(ref: AiReference, t: Translate): string {
-  if ((ref.title ?? '').trim()) {
-    return ref.title!.trim();
+function stripLeadingDate(text: string): string {
+  return text.replace(/^\s*\(\d{4}-\d{2}-\d{2}\)\s*/, '').trim();
+}
+
+function referenceSnippet(ref: AiReference, hasOpenableText: boolean): { title: string | null; detail: string | null } {
+  const rawTitle = stripLeadingDate(ref.title ?? '') || null;
+  const rawSource = hasOpenableText ? null : stripLeadingDate(ref.sourceText ?? '') || null;
+  if (rawTitle && rawSource && rawSource !== rawTitle) {
+    return { title: rawTitle, detail: rawSource };
   }
-  const text = (ref.sourceText ?? '').replace(/^\s*\(\d{4}-\d{2}-\d{2}\)\s*/, '').trim();
-  if (text) {
-    return text.length > 88 ? `${text.slice(0, 85)}...` : text;
+  if (rawTitle || rawSource) {
+    return { title: rawTitle ?? rawSource, detail: null };
   }
-  return `${ref.resourceType || t('recordFallback', 'Record')} ${ref.index}`;
+  return { title: null, detail: null };
 }
 
 type CitationDecorations = NonNullable<React.ComponentProps<typeof MarkdownAnswer>['decorations']>;
-
-const EvidenceCard: React.FC<{
-  refItem: AiReference;
-  patientUuid: string;
-  t: Translate;
-  decorations: CitationDecorations;
-}> = ({ refItem, patientUuid, t, decorations }) => {
-  const url = buildReferenceUrl(refItem, patientUuid, decorations.misattributed?.has(refItem.index) ?? false);
-  const title = evidenceTitle(refItem, t);
-  const meta = [`[${refItem.index}]`, refItem.resourceType, refItem.date].filter(Boolean).join(' · ');
-  const source = (refItem.sourceText ?? '').trim();
-  const sourceWithoutDate = source.replace(/^\s*\(\d{4}-\d{2}-\d{2}\)\s*/, '').trim();
-  const showSource = Boolean(source && source !== title && sourceWithoutDate !== title);
-  const grounding = isReferenceData(refItem) ? null : groundedTag(refItem, t);
-  return (
-    <div className={styles.evidenceCard}>
-      <div className={styles.evidenceMeta}>{meta}</div>
-      <div className={styles.evidenceBadges}>
-        {renderTextWithCitations(`[${refItem.index}]`, {
-          references: [refItem],
-          patientUuid,
-          t,
-          misattributed: decorations.misattributed ?? new Set(),
-          severities: decorations.severities ?? new Map(),
-          qualified: decorations.qualified ?? new Set(),
-          badged: new Set(),
-          noted: new Set(),
-        })}
-      </div>
-      <div className={styles.evidenceBadges}>
-        {refItem.resolutionStatus === 'resolved' && (
-          <span title={t('sourceFoundTitle', 'Citation resolved to this source record.')}>
-            <Tag type="blue" size="sm">
-              {t('sourceFound', 'Source found')}
-            </Tag>
-          </span>
-        )}
-        {refItem.resolutionStatus === 'unresolved' && (
-          <span title={t('sourceMissingTitle', 'Citation did not resolve to a source record.')}>
-            <Tag type="red" size="sm">
-              {t('sourceMissing', 'Source missing')}
-            </Tag>
-          </span>
-        )}
-        {grounding && (
-          <span title={grounding.title}>
-            <Tag type={grounding.type} size="sm">
-              {grounding.text}
-            </Tag>
-          </span>
-        )}
-      </div>
-      {url ? (
-        <a className={styles.evidenceLink} href={url} onClick={(e) => handleReferenceNavigate(e, url, refItem)}>
-          {title}
-        </a>
-      ) : (
-        <div className={styles.evidenceTitleText}>{title}</div>
-      )}
-      {showSource && <div className={styles.evidenceSource}>{source}</div>}
-      {refItem.source && (
-        <div className={styles.evidenceUuid}>
-          {t('sourceDataset', 'Source')}: {refItem.source}
-        </div>
-      )}
-      {/* withheldInteractions is not drawn here either, for the reason given in Citation details. */}
-      {refItem.resourceUuid && (
-        <div className={styles.evidenceUuid}>
-          {t('sourceUuid', 'UUID')}: {refItem.resourceUuid}
-        </div>
-      )}
-      {refItem.usage && refItem.usage.length > 0 && (
-        <div className={styles.evidenceUuid}>
-          {t('usedIn', 'Used in')}: {[...new Set(refItem.usage.map((item) => item.location))].join(', ')}
-        </div>
-      )}
-      {/* The badge says some claims are unsupported; this says which. */}
-      {refItem.groundingStatus === 'mixed' && refItem.groundingChecks && refItem.groundingChecks.length > 0 && (
-        <ul
-          className={styles.groundingChecks}
-          aria-label={t('groundingChecksLabel', 'Claims checked against this record')}
-        >
-          {refItem.groundingChecks.map((check, i) => (
-            <li key={i}>
-              <Tag
-                type={check.status === 'verified' ? 'green' : check.status === 'unsupported' ? 'red' : 'gray'}
-                size="sm"
-              >
-                {check.status === 'verified'
-                  ? t('grounded', 'Verified')
-                  : check.status === 'unsupported'
-                    ? t('notGrounded', 'Unsupported')
-                    : t('groundingUnchecked', 'Not checked')}
-              </Tag>{' '}
-              {check.claim}
-              {/* A source-set check judged the claim against several records at once, not this one alone. */}
-              {check.source_indices.some((index) => index !== refItem.index) &&
-                ` (${t('groundingCheckedTogetherWith', 'checked together with {{records}}', {
-                  records: check.source_indices
-                    .filter((index) => index !== refItem.index)
-                    .map((index) => `[${index}]`)
-                    .join(', '),
-                  interpolation: { escapeValue: false },
-                })})`}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
 
 /** Solid confidence pill matching the validate dashboard's chip (label + color per level). */
 function confidenceChipProps(level: string, t: Translate): [string, string] {
@@ -712,7 +605,6 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   answer,
   references,
   safetyWarnings,
-  safetyStatus,
   safetyCheck,
   blocks,
   auditLogId,
@@ -1005,9 +897,6 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   const rawSafetyIssues = Array.from(new Set(safetyCheck?.issues ?? []));
   const actionableSafetyIssues = rawSafetyIssues.filter((issue) => !SUPPRESSED_SAFETY_ISSUES.has(issue));
   const onlySuppressedSafetyIssues = rawSafetyIssues.length > 0 && actionableSafetyIssues.length === 0;
-  const rawEffectiveStatus = safetyCheck?.status ?? safetyStatus;
-  const effectiveStatus = onlySuppressedSafetyIssues ? undefined : rawEffectiveStatus;
-  const statusTag = effectiveStatus ? safetyStatusTag(effectiveStatus, t) : null;
   const issues = actionableSafetyIssues.map((issue) => safetyIssueText(issue, t));
   const medicationPackage = safetyCheck?.package;
   const relationshipPackage = medicationPackage?.cross_reactivity;
@@ -1021,15 +910,10 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
       source: relationshipPackage,
     },
   ].filter(({ source }) => Boolean(source?.id?.trim()));
-  // Which rules ran is beside the point when the only issues are ones deliberately not reported and
-  // nothing was found: the rule source alone must not reopen the box those issues kept closed.
-  const sourcesReopenBox = !onlySuppressedSafetyIssues || (safetyWarnings?.length ?? 0) > 0;
-  const hasSafetyDetails = issues.length > 0 || (sourcesReopenBox && sourceRows.length > 0);
-  // A bare `unavailable` with no reason, no rule source and no finding has nothing to report, so
-  // it draws no box; a status with a reason or a finding beside it is still tagged.
-  const statusNeedsBox = Boolean(
-    effectiveStatus && effectiveStatus !== 'checked' && !(effectiveStatus === 'unavailable' && !hasSafetyDetails),
-  );
+  const anySafetyWarnings = (safetyWarnings ?? []).length > 0;
+  // Non-warning checks stay quiet so seed-package limits do not alarm users unnecessarily.
+  const hasSafetyDetails =
+    anySafetyWarnings && (issues.length > 0 || (!onlySuppressedSafetyIssues && sourceRows.length > 0));
 
   // One chip as the safety box draws it, in either of its two lists.
   const renderWarning = (warning: AiSafetyWarning, i: number) => {
@@ -1223,14 +1107,6 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
   const showSections =
     Boolean(answer) && (Boolean(inDepth) || Boolean(answerValidation) || (isTerminal(phase) && Boolean(confidence)));
   const sections = showSections ? splitSections(answer) : null;
-  const evidence = references.filter(
-    (ref) =>
-      Boolean((ref.title ?? '').trim()) ||
-      Boolean((ref.sourceText ?? '').trim()) ||
-      ref.resolutionStatus === 'unresolved',
-  );
-  const shownEvidence = evidence.slice(0, 5);
-  const overflowEvidence = evidence.slice(5);
 
   return (
     // data-turn-phase exposes the whole turn's lifecycle to the DOM so behavior is observable
@@ -1438,22 +1314,21 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
 
       {shownReferences.length > 0 && (
         <details className={styles.referencesSection}>
-          <summary className={styles.referencesLabel}>{t('citationDetails', 'Citation details')}</summary>
+          <summary className={styles.referencesLabel}>
+            {t('sourcesCount', 'Sources ({{count}})', {
+              count: shownReferences.length,
+              defaultValue_other: 'Sources ({{count}})',
+            })}
+          </summary>
           <div className={styles.referencesList}>
             {shownReferences.map((ref) => {
               const isMisattributed = misattributed.has(ref.index);
               const url = buildReferenceUrl(ref, patientUuid, isMisattributed);
               const referenceData = isReferenceData(ref);
               const typeLabel = referenceData ? referenceLabel(ref, t) : ref.resourceType;
-              // Only append the date when there is one — an allergy and a safety finding carry
-              // none, and "— null" was reaching the screen.
+              // Only append the date when present — allergies and findings carry none.
               const label = `[${ref.index}] ${typeLabel}${ref.date ? ` — ${ref.date}` : ''}`;
-              // A reference citation carries no badge: its label already says what it is, and a
-              // grounding verdict is not published for it.
               const g = referenceData ? null : groundedTag(ref, t);
-              // Tooltip via a native-title wrapper rather than Tag's deprecated `title` prop.
-              // Rendered as a sibling of the link (Carbon Tag is a <div>) so the metadata
-              // badge is not nested in, or part of, the navigation click target.
               const badge = g ? (
                 <span className={styles.groundedTag} title={g.title}>
                   <Tag type={g.type} size="sm">
@@ -1461,17 +1336,15 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                   </Tag>
                 </span>
               ) : null;
-              // Where the cited record's content came from, on hover over the citation itself:
-              // provenance a clinician may want, not a line every drug-reference citation needs.
-              // Keyed on the value, never the group: a reference-group record may carry none, and
-              // the module's own finding does not.
-              const source = typeof ref.source === 'string' && ref.source.trim() ? ref.source.trim() : null;
+              // Keep non-chart provenance (e.g. DDInter) on hover; skip internal querystore.
+              const rawSource = typeof ref.source === 'string' ? ref.source.trim() : '';
+              const source = rawSource && rawSource.toLowerCase() !== 'querystore' ? rawSource : null;
               const sourceTitle = source
                 ? t('referenceSourceHover', 'Source: {{source}}', { source, interpolation: { escapeValue: false } })
                 : undefined;
-              // What a reference citation was checked against, read where a chart citation
-              // would be opened: such a record lives nowhere a link could go.
+              // Reference-group records open inline text instead of navigating to a chart tab.
               const referenceText = url ? null : openableReferenceText(ref);
+              const snippet = referenceSnippet(ref, referenceText !== null);
               const textKey = `${ref.index}:${ref.resourceUuid}`;
               const textOpen = referenceText !== null && openReferenceText === textKey;
               const link = url ? (
@@ -1503,18 +1376,20 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                 </span>
               );
               const stopDate = stopDates.get(ref.index);
-              // An ORDER record's tag only says which finding it backs, so it is drawn where the answer
-              // cites several and plain: beside one finding it restates that finding's own pill, and
-              // that pill already opens the finding's text.
               const orderRecord = isOrderRecord(ref);
               const sourceOf = orderRecord && citedFindings.size <= 1 ? [] : attachedForOf(ref, citedFindings);
               return (
-                <span key={ref.index} className={styles.referenceItem}>
+                <div key={ref.index} className={styles.referenceItem}>
                   {link}
-                  {/* When this cited prescription stopped: the answer can say an order ended
-                      without saying when. Beside the record's own date, never in its place — the
-                      two are different facts. No entry draws nothing, and is no claim the order
-                      is current. */}
+                  {snippet.title && <span className={styles.referenceSnippet}>{snippet.title}</span>}
+                  {snippet.detail && <span className={styles.referenceDetail}>{snippet.detail}</span>}
+                  {ref.resolutionStatus === 'unresolved' && (
+                    <span title={t('sourceMissingTitle', 'Citation did not resolve to a source record.')}>
+                      <Tag type="red" size="sm">
+                        {t('sourceMissing', 'Source missing')}
+                      </Tag>
+                    </span>
+                  )}
                   {stopDate && (
                     <span
                       className={styles.orderStopDateTag}
@@ -1523,28 +1398,17 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                       {t('orderStopDate', 'Stopped {{stopDate}}', { stopDate, interpolation: { escapeValue: false } })}
                     </span>
                   )}
-                  {/* withheldInteractions is not drawn: the partners a drug-reference record leaves out
-                      are mostly drugs this patient is not on, and the safety check reads every one of
-                      them regardless, so a count here read as an incomplete check that was not. */}
                   {isMisattributed && (
                     <span className={styles.misattributedTag} title={misattributedTitle(t)}>
                       {t('notTheOrderNamed', 'Not the order named')}
                     </span>
                   )}
-                  {/* An attached citation IS the chart record a cited safety finding fired on — the
-                      recorded allergy or condition whose match raised it — so the answer's prose
-                      carries no [N] marker for it, and this chip is the only place it appears. The
-                      tag says what the record is to the answer: the source of the cited findings it
-                      backs (`attachedFor`), never who attached it, which a clinician cannot act on.
-                      Nothing where the response names no finding for it. */}
                   {sourceOf.length > 0 &&
                     (() => {
                       const sourceLabel = t('sourceOfFindings', 'source of {{citations}}', {
                         citations: sourceOf.map((index) => `[${index}]`).join(', '),
                         interpolation: { escapeValue: false },
                       });
-                      // One finding with text to open: the tag opens it, as its own citation does. Several
-                      // stay a plain tag, since one click cannot open them all.
                       const finding =
                         sourceOf.length === 1 ? references.find((other) => other.index === sourceOf[0]) : undefined;
                       if (finding && !orderRecord && openableReferenceText(finding)) {
@@ -1579,7 +1443,42 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
                       );
                     })()}
                   {badge}
-                </span>
+                  {!referenceData &&
+                    ref.groundingStatus === 'mixed' &&
+                    ref.groundingChecks &&
+                    ref.groundingChecks.length > 0 && (
+                      <ul
+                        className={styles.groundingChecks}
+                        aria-label={t('groundingChecksLabel', 'Claims checked against this record')}
+                      >
+                        {ref.groundingChecks.map((check, i) => (
+                          <li key={i}>
+                            <Tag
+                              type={
+                                check.status === 'verified' ? 'green' : check.status === 'unsupported' ? 'red' : 'gray'
+                              }
+                              size="sm"
+                            >
+                              {check.status === 'verified'
+                                ? t('grounded', 'Verified')
+                                : check.status === 'unsupported'
+                                  ? t('notGrounded', 'Unsupported')
+                                  : t('groundingUnchecked', 'Not checked')}
+                            </Tag>{' '}
+                            {check.claim}
+                            {check.source_indices.some((index) => index !== ref.index) &&
+                              ` (${t('groundingCheckedTogetherWith', 'checked together with {{records}}', {
+                                records: check.source_indices
+                                  .filter((index) => index !== ref.index)
+                                  .map((index) => `[${index}]`)
+                                  .join(', '),
+                                interpolation: { escapeValue: false },
+                              })})`}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                </div>
               );
             })}
           </div>
@@ -1636,43 +1535,10 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         </details>
       )}
 
-      {evidence.length > 0 && (
-        <div className={styles.evidenceSection}>
-          <div className={styles.evidenceSectionTitle}>{t('evidenceUsed', 'Evidence Used')}</div>
-          <div className={styles.evidenceGrid}>
-            {shownEvidence.map((ref) => (
-              <EvidenceCard
-                key={`evidence-${ref.index}`}
-                refItem={ref}
-                patientUuid={patientUuid}
-                t={t}
-                decorations={{ misattributed, severities, qualified }}
-              />
-            ))}
-          </div>
-          {overflowEvidence.length > 0 && (
-            <details className={styles.evidenceMore}>
-              <summary>{t('showAllEvidence', 'show all evidence')}</summary>
-              <div className={styles.evidenceGrid}>
-                {overflowEvidence.map((ref) => (
-                  <EvidenceCard
-                    key={`evidence-more-${ref.index}`}
-                    refItem={ref}
-                    patientUuid={patientUuid}
-                    t={t}
-                    decorations={{ misattributed, severities, qualified }}
-                  />
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-      )}
-
       {/* Every finding is in the answer's own text (backend ADR Decision 124), so none is drawn
           by default. Drawing no box at all read as "no safety check ran", and a grey line as an
           all-clear, so this is the same red box as any other, collapsed until opened. */}
-      {shownSafetyWarnings.length === 0 && (safetyWarnings ?? []).length > 0 && (
+      {shownSafetyWarnings.length === 0 && anySafetyWarnings && (
         <div className={`${styles.safetyWarningsSection} ${styles.safetyWarnings_flagged}`}>
           <span className={styles.safetyWarningsLabel}>
             {t('safetyChecks', 'Answer safety check')}:{' '}
@@ -1699,13 +1565,11 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         </div>
       )}
 
-      {(shownSafetyWarnings.length > 0 || statusNeedsBox || hasSafetyDetails) && (
+      {shownSafetyWarnings.length > 0 && (
         // No live-region role: the panel already sits inside the chat history's
         // role="log" aria-live="polite", which announces this content in order. An
         // assertive role="alert" here would preempt the answer it annotates.
-        // Red only where the box holds a finding about the drug in question. A box holding nothing
-        // but chips about her OTHER medications (backend aboutAnotherOfHerMedications) is drawn
-        // neutral: those findings are real, and one click away, but not a warning about what was asked.
+        // Red only where the box holds a finding about the drug in question.
         <div
           data-testid="ai-response-safety"
           className={
@@ -1716,11 +1580,6 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
         >
           <span className={styles.safetyWarningsLabel}>
             {t('safetyChecks', 'Answer safety check')}:
-            {statusTag && (
-              <Tag type={statusTag.tagType} size="sm">
-                {statusTag.label}
-              </Tag>
-            )}
             {safetyBoxCollapsible && (
               <>
                 {' '}
@@ -1786,8 +1645,10 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
       )}
 
       {hasSafetyDetails && (
-        <div className={styles.safetyCheckSummary} data-testid="safety-check-summary">
-          <div className={styles.safetyCheckSummaryHeading}>{t('safetyCheckDetails', 'Medication safety details')}</div>
+        <details className={styles.safetyCheckSummary} data-testid="safety-check-summary">
+          <summary className={styles.safetyCheckSummaryHeading}>
+            {t('safetyCheckDetails', 'Medication safety details')}
+          </summary>
           {issues.length > 0 && (
             <ul className={styles.safetyCheckIssueList}>
               {issues.map((issue, index) => (
@@ -1817,7 +1678,7 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               })}
             </dl>
           )}
-        </div>
+        </details>
       )}
 
       {answer && !isLoading && (

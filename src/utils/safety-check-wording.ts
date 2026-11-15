@@ -1,20 +1,4 @@
-import { type AiSafetyStatus } from '../api/chartsearchai';
 import { type Translate } from '../components/citation-chip.component';
-
-/**
- * Maps a stated safety status to a Carbon Tag. Limited and unavailable results remain visible;
- * checked-clean stays quiet when no warnings or source details need disclosure.
- */
-export function safetyStatusTag(status: AiSafetyStatus, t: Translate): { tagType: 'green' | 'gray'; label: string } {
-  switch (status) {
-    case 'checked':
-      return { tagType: 'green', label: t('safetyChecked', 'Checked') };
-    case 'limited':
-      return { tagType: 'gray', label: t('safetyLimited', 'Limited safety check') };
-    case 'unavailable':
-      return { tagType: 'gray', label: t('safetyUnavailable', 'Safety check unavailable') };
-  }
-}
 
 export const SUPPRESSED_SAFETY_ISSUES = new Set([
   'check_disabled',
