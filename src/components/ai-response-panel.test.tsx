@@ -2045,13 +2045,18 @@ describe('AiResponsePanel answer-validation lifecycle', () => {
 
   it.each([
     ['checking', 'Checking answer'],
-    ['checked', 'Checked'],
     ['edited', 'Updated after check'],
     ['needs_review', 'Needs review'],
     ['unavailable', 'Check unavailable'],
   ] as const)('renders the %s lifecycle label', (status, label) => {
     render(<AiResponsePanel {...baseProps} answerValidation={{ status, label }} />);
     expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it('omits the Checked badge while keeping data-validation-status for checked answers', () => {
+    render(<AiResponsePanel {...baseProps} answerValidation={{ status: 'checked', label: 'Checked' }} />);
+    expect(screen.queryByText('Checked')).not.toBeInTheDocument();
+    expect(screen.getByTestId('section-answer')).toHaveAttribute('data-validation-status', 'checked');
   });
 
   it('renders the answer-check summary as visible content instead of a badge tooltip', () => {
@@ -2265,6 +2270,12 @@ describe('AiResponsePanel per-section confidence', () => {
   it('renders no sections / chips when the backend sends no confidence (single model / parity)', () => {
     render(<AiResponsePanel {...baseProps} />);
     expect(screen.queryByTestId('section-answer')).not.toBeInTheDocument();
+    expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
+  });
+
+  it('omits the confidence chip when section level is null (ungraded)', () => {
+    render(<AiResponsePanel {...baseProps} confidence={{ answer: { level: null, note: '' } }} />);
+    expect(screen.getByTestId('section-answer')).toBeInTheDocument();
     expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
   });
 
