@@ -22,7 +22,7 @@ import {
   type TurnEnvelope,
 } from '../hooks/useChartSearchAi';
 import { type OmnibarViewProps } from '../omnibar-contract/types';
-import { chatSessionStore } from '../store/chat-session.store';
+import { chatSessionStore, providerSupportsInDepth } from '../store/chat-session.store';
 import { answerLimitsOf, NO_ANSWER_LIMITS } from '../utils/answer-limits';
 import { useChartSearchOffer } from './chartsearch-offer';
 import styles from './chartsearch-answer.scss';
@@ -63,8 +63,10 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
   const headingId = useId();
   const config = useConfig<ChartSearchAiConfig>();
   const systemProvider = useSystemProviderDiscovery();
-  const { selectedProfileId, profileDiscoveryStatus, profileExplicitlySelected } = useStore(chatSessionStore);
+  const { selectedProfileId, profileDiscoveryStatus, profileExplicitlySelected, inDepthEnabled, providerCapabilities } =
+    useStore(chatSessionStore);
   const lastTurnProfileRef = useRef<string | null>(null);
+  const lastTurnInDepthRef = useRef<boolean | null>(null);
   useHubProfileDiscovery(systemProvider.providerId);
 
   const patientUuid = context.scope === 'patient' ? context.patientUuid : undefined;
@@ -120,6 +122,7 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
     setHasRequested(Boolean(submitted));
     setAttempt(0);
     lastTurnProfileRef.current = null;
+    lastTurnInDepthRef.current = null;
   }, [patientUuid, trimmedQuestion, submitted]);
 
   const providerResolved = systemProvider.status !== 'loading';
@@ -143,6 +146,8 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
           : undefined;
       lastTurnProfileRef.current = profileId ?? null;
       const capabilities = providerId ? storeState.providerCapabilities?.[providerId] : undefined;
+      const inDepth = providerSupportsInDepth(storeState, providerId) ? Boolean(storeState.inDepthEnabled) : undefined;
+      lastTurnInDepthRef.current = typeof inDepth === 'boolean' ? inDepth : null;
 
       msgCounterRef.current += 1;
       const messageId = `omnibar-${seq}-${msgCounterRef.current}`;
@@ -306,7 +311,7 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
         profileId,
         providerId,
         capabilities,
-        { ephemeral: true },
+        { ephemeral: true, ...(typeof inDepth === 'boolean' ? { inDepth } : {}) },
       );
     },
     [abortInFlight, showReasoning, signal],
@@ -325,6 +330,20 @@ const ChartSearchAnswerView: React.FC<ChartSearchAnswerViewProps> = ({
     }
     setAttempt((n) => n + 1);
   }, [hasRequested, systemProvider.providerId, profileDiscoveryStatus, profileExplicitlySelected, selectedProfileId]);
+
+  const inDepthProviderId = systemProvider.providerId ?? chatSessionStore.getState().selectedProviderId;
+  const inDepthSupported = Boolean(inDepthProviderId && providerCapabilities?.[inDepthProviderId]?.includes('indepth'));
+  useEffect(() => {
+    if (
+      !hasRequested ||
+      !inDepthSupported ||
+      lastTurnInDepthRef.current === null ||
+      lastTurnInDepthRef.current === Boolean(inDepthEnabled)
+    ) {
+      return;
+    }
+    setAttempt((n) => n + 1);
+  }, [hasRequested, inDepthSupported, inDepthEnabled]);
 
   useEffect(() => {
     if (!shouldOffer || !patientUuid || !trimmedQuestion || !hasRequested || signal?.aborted || !providerResolved) {

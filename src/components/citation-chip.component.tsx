@@ -135,6 +135,8 @@ const REFERENCE_KIND_TITLE: Record<ReferenceKind, (t: Translate) => string> = {
       'The module’s own safety finding, computed from this patient’s chart — not a chart record to open.',
     ),
   drug_reference: (t) => t('drugReferenceCitation', 'Clinical reference data — not this patient’s record.'),
+  knowledgereference: (t) =>
+    t('clinicalGuidelineCitation', 'Clinical guideline reference — not this patient’s record.'),
   drug_class_note: (t) =>
     t('drugClassNoteCitation', 'A note about a drug class the question named — not this patient’s record.'),
   // A `reference`-group type this client predates: say only what the group guarantees.

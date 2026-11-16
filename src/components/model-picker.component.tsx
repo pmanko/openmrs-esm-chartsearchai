@@ -1,10 +1,15 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useId, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MenuButton, MenuItemRadioGroup } from '@carbon/react';
+import { MenuButton, MenuItemRadioGroup, Toggle } from '@carbon/react';
 import { useConfig, useStore } from '@openmrs/esm-framework';
 import { type ChartSearchAiConfig } from '../config-schema';
 import { selectHubProfile, useHubProfileDiscovery } from '../hooks/hub-profile-discovery';
-import { chatSessionStore, requestProviderFor } from '../store/chat-session.store';
+import {
+  chatSessionStore,
+  providerSupportsInDepth,
+  requestProviderFor,
+  setInDepthEnabled,
+} from '../store/chat-session.store';
 import { useMenuTriggerName } from './menu-trigger-name';
 import styles from './model-picker.scss';
 
@@ -20,10 +25,12 @@ interface ModelPickerProps {
  */
 const ModelPicker: React.FC<ModelPickerProps> = ({ patientUuid }) => {
   const { t } = useTranslation();
+  const inDepthToggleId = useId();
   const { showModelPicker } = useConfig<ChartSearchAiConfig>();
   const sessionState = useStore(chatSessionStore);
-  const { selectedProfileId, hubProfiles, profileDiscoveryStatus } = sessionState;
+  const { selectedProfileId, hubProfiles, profileDiscoveryStatus, inDepthEnabled } = sessionState;
   const providerId = requestProviderFor(sessionState, patientUuid);
+  const supportsInDepth = providerSupportsInDepth(sessionState, providerId);
   const triggerRef = useRef<HTMLDivElement>(null);
   useHubProfileDiscovery(providerId);
 
@@ -42,14 +49,31 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ patientUuid }) => {
     effectiveProfile?.label ?? unavailableSelectionLabel ?? t('chooseAiProfile', 'Choose AI profile');
   useMenuTriggerName(triggerRef, `${t('aiProfile', 'AI profile')}: ${triggerLabel}`);
 
-  if (showModelPicker === false || providerId !== 'hub' || profileDiscoveryStatus === 'loading') {
+  const showPicker = showModelPicker !== false && providerId === 'hub' && profileDiscoveryStatus !== 'loading';
+  if (!showPicker && !supportsInDepth) {
     return null;
   }
 
-  if (!hubProfiles || availableProfiles.length === 0) {
+  const inDepthToggle = supportsInDepth ? (
+    <div className={styles.inDepthControl}>
+      <Toggle
+        id={inDepthToggleId}
+        size="sm"
+        hideLabel
+        labelText={t('inDepthToggleLabel', 'In depth')}
+        toggled={Boolean(inDepthEnabled)}
+        onToggle={(checked) => setInDepthEnabled(checked)}
+      />
+    </div>
+  ) : null;
+
+  if (showPicker && (!hubProfiles || availableProfiles.length === 0)) {
     return (
       <div className={styles.root} role="status">
-        {t('profilesUnavailable', 'AI profiles unavailable')}
+        <div className={styles.triggerRow}>
+          {t('profilesUnavailable', 'AI profiles unavailable')}
+          {inDepthToggle}
+        </div>
       </div>
     );
   }
@@ -57,28 +81,31 @@ const ModelPicker: React.FC<ModelPickerProps> = ({ patientUuid }) => {
   return (
     <div className={styles.root}>
       <div className={styles.triggerRow}>
-        <MenuButton
-          ref={triggerRef}
-          data-testid="chartsearchai-profile-picker"
-          label={triggerLabel}
-          kind="ghost"
-          size="sm"
-          menuAlignment="top-end"
-        >
-          <MenuItemRadioGroup
-            label={t('aiProfile', 'AI profile')}
-            items={availableProfiles.map((profile) => profile.id)}
-            itemToString={(item) => {
-              const profile = availableProfiles.find((candidate) => candidate.id === item);
-              if (!profile) return String(item ?? '');
-              return profile.default ? `${profile.label} ${t('defaultTag', '(default)')}` : profile.label;
-            }}
-            selectedItem={
-              availableProfiles.some((profile) => profile.id === effectiveProfile?.id) ? effectiveProfile?.id : ''
-            }
-            onChange={(profileId) => selectHubProfile(profileId as string)}
-          />
-        </MenuButton>
+        {showPicker && (
+          <MenuButton
+            ref={triggerRef}
+            data-testid="chartsearchai-profile-picker"
+            label={triggerLabel}
+            kind="ghost"
+            size="sm"
+            menuAlignment="top-end"
+          >
+            <MenuItemRadioGroup
+              label={t('aiProfile', 'AI profile')}
+              items={availableProfiles.map((profile) => profile.id)}
+              itemToString={(item) => {
+                const profile = availableProfiles.find((candidate) => candidate.id === item);
+                if (!profile) return String(item ?? '');
+                return profile.default ? `${profile.label} ${t('defaultTag', '(default)')}` : profile.label;
+              }}
+              selectedItem={
+                availableProfiles.some((profile) => profile.id === effectiveProfile?.id) ? effectiveProfile?.id : ''
+              }
+              onChange={(profileId) => selectHubProfile(profileId as string)}
+            />
+          </MenuButton>
+        )}
+        {inDepthToggle}
       </div>
     </div>
   );

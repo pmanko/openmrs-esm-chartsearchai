@@ -51,6 +51,15 @@ export interface AiReference {
   title?: string;
   /** Whether the citation index resolved to a record in this turn's evidence ledger. */
   resolutionStatus?: 'resolved' | 'unresolved';
+  /** External authority / guideline metadata attached by the backend, if any. */
+  provenance?: {
+    authority?: string;
+    section?: string;
+    strength?: string;
+    url?: string;
+    version?: string;
+    license?: string;
+  } | null;
   /** Answer, In-Depth, or table locations that used this source. */
   usage?: Array<{ location: string; text: string; path?: string }>;
 
@@ -851,7 +860,7 @@ export function chatPatientChartStream(
    * checked.
    */
   providerCapabilities?: readonly string[],
-  options?: { ephemeral?: boolean },
+  options?: { ephemeral?: boolean; inDepth?: boolean },
 ): void {
   const path = `${BASE_PATH}/chat/stream`;
   const url = window.openmrsBase ? `${window.openmrsBase}${path}` : makeUrl(path);
@@ -869,6 +878,9 @@ export function chatPatientChartStream(
   }
   if (options?.ephemeral === true) {
     body.ephemeral = true;
+  }
+  if (typeof options?.inDepth === 'boolean') {
+    body.inDepth = options.inDepth;
   }
 
   window

@@ -65,6 +65,8 @@ export interface ChatSessionState {
    * its composer until the new conversation is in place, not only the panel that asked for it.
    */
   newChatPendingByPatient?: Record<string, boolean>;
+  /** Whether optional In-Depth generation is enabled live when supported by the provider. */
+  inDepthEnabled?: boolean;
   /** Patients whose last New chat request failed: every panel on the patient says so. */
   newChatErrorByPatient?: Record<string, string | null>;
 }
@@ -101,6 +103,16 @@ export const initialChatSessionState = (): ChatSessionState => ({
   hubProfiles: null,
   selectedProviderId: null,
 });
+
+export function setInDepthEnabled(enabled: boolean): void {
+  chatSessionStore.setState({ inDepthEnabled: enabled });
+}
+
+export function providerSupportsInDepth(state: ChatSessionState, providerId?: string | null): boolean {
+  if (!providerId) return false;
+  const capabilities = state.providerCapabilities?.[providerId];
+  return Array.isArray(capabilities) && capabilities.includes('indepth');
+}
 
 export const chatSessionStore = createGlobalStore<ChatSessionState>(
   'chartsearchai-chat-session',

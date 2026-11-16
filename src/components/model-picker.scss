@@ -12,5 +12,11 @@
 .triggerRow {
   display: inline-flex;
   align-items: center;
-  gap: layout.$spacing-02;
+  flex-wrap: wrap;
+  gap: layout.$spacing-03;
+}
+
+.inDepthControl {
+  display: inline-flex;
+  align-items: center;
 }

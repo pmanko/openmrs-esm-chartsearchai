@@ -172,10 +172,41 @@ function groundedTag(ref: AiReference, t: Translate): GroundedTag | null {
  * one line about it leaves out, such as the interaction's mechanism.
  */
 function openableReferenceText(ref: AiReference): string | null {
-  if (!isReferenceData(ref) || typeof ref.referenceText !== 'string') {
+  if (!isReferenceData(ref)) {
     return null;
   }
-  return ref.referenceText.trim() || null;
+  if (typeof ref.referenceText === 'string' && ref.referenceText.trim()) {
+    return ref.referenceText.trim();
+  }
+  if (typeof ref.sourceText === 'string' && ref.sourceText.trim()) {
+    const trimmed = ref.sourceText.trim();
+    const title = (ref.title ?? '').trim();
+    if (title && trimmed.startsWith(`${title}: `)) {
+      return trimmed.slice(title.length + 2).trim() || trimmed;
+    }
+    return trimmed;
+  }
+  return null;
+}
+
+function externalProvenanceUrl(ref: AiReference): string | null {
+  const raw = ref.provenance?.url;
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+
+function provenanceSummary(ref: AiReference): string | null {
+  const provenance = ref.provenance;
+  if (!provenance) {
+    return null;
+  }
+  const parts = [provenance.authority, provenance.section, provenance.version]
+    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+    .map((value) => value.trim());
+  return parts.length > 0 ? Array.from(new Set(parts)).join(' · ') : null;
 }
 
 /**
@@ -187,6 +218,7 @@ function openableReferenceText(ref: AiReference): string | null {
 const REFERENCE_KIND_LABEL: Record<ReferenceKind, (t: Translate) => string> = {
   safety_finding: (t) => t('safetyFindingLabel', 'Safety finding'),
   drug_reference: (t) => t('drugReferenceLabel', 'Drug reference'),
+  knowledgereference: (t) => t('clinicalGuidelineLabel', 'Clinical guideline'),
   drug_class_note: (t) => t('drugClassNoteLabel', 'Drug class note'),
   // Only for a `reference`-group type this client predates — never for one the module knows.
   other: (t) => t('referenceMaterialLabel', 'Reference material'),
@@ -1345,6 +1377,8 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               // Reference-group records open inline text instead of navigating to a chart tab.
               const referenceText = url ? null : openableReferenceText(ref);
               const snippet = referenceSnippet(ref, referenceText !== null);
+              const extUrl = url ? null : externalProvenanceUrl(ref);
+              const provSummary = provenanceSummary(ref);
               const textKey = `${ref.index}:${ref.resourceUuid}`;
               const textOpen = referenceText !== null && openReferenceText === textKey;
               const link = url ? (
@@ -1381,8 +1415,16 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
               return (
                 <div key={ref.index} className={styles.referenceItem}>
                   {link}
-                  {snippet.title && <span className={styles.referenceSnippet}>{snippet.title}</span>}
+                  {snippet.title &&
+                    (extUrl ? (
+                      <a className={styles.referenceSnippet} href={extUrl} target="_blank" rel="noopener noreferrer">
+                        {snippet.title}
+                      </a>
+                    ) : (
+                      <span className={styles.referenceSnippet}>{snippet.title}</span>
+                    ))}
                   {snippet.detail && <span className={styles.referenceDetail}>{snippet.detail}</span>}
+                  {provSummary && <span className={styles.referenceDetail}>{provSummary}</span>}
                   {ref.resolutionStatus === 'unresolved' && (
                     <span title={t('sourceMissingTitle', 'Citation did not resolve to a source record.')}>
                       <Tag type="red" size="sm">
@@ -1490,12 +1532,25 @@ const AiResponsePanel: React.FC<AiResponsePanelProps> = ({
             }
             const heading = `[${open.index}] ${referenceLabel(open, t)}`;
             const source = typeof open.source === 'string' && open.source.trim() ? open.source.trim() : null;
+            const extUrl = externalProvenanceUrl(open);
+            const provSummary = provenanceSummary(open);
             const basedOn = references.filter((ref) => foldedInto.get(ref.index)?.includes(open.index));
             return (
               <section id={`reference-text-${open.index}`} className={styles.referenceTextPanel} aria-label={heading}>
                 <p className={styles.referenceTextHeading}>{heading}</p>
                 <p className={styles.referenceTextNote}>{referenceTitle(open, t)}</p>
                 <p className={styles.referenceTextBody}>{text}</p>
+                {(provSummary || extUrl) && (
+                  <p className={styles.referenceTextNote}>
+                    {extUrl ? (
+                      <a href={extUrl} target="_blank" rel="noopener noreferrer">
+                        {provSummary ?? extUrl}
+                      </a>
+                    ) : (
+                      provSummary
+                    )}
+                  </p>
+                )}
                 {basedOn.length > 0 && (
                   <p className={styles.referenceTextNote}>
                     {t('basedOnRecords', 'Based on the patient’s record:')}
