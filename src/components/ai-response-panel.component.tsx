@@ -526,7 +526,8 @@ const ConfidenceSection: React.FC<{
   if (!body) {
     return null;
   }
-  const level = section?.level ?? 'green';
+  const level =
+    section?.level === 'green' || section?.level === 'yellow' || section?.level === 'red' ? section.level : null;
   const note = section?.note ?? '';
   const rendered = (
     <MarkdownAnswer answer={body} references={references} patientUuid={patientUuid} decorations={decorations} />
@@ -539,11 +540,16 @@ const ConfidenceSection: React.FC<{
     originalAnswer && (originalAnswer !== body.trim() || originalBlocks.length > 0 || hasOriginalReferenceArtifact),
   );
   const originalWasEdited = answerValidation?.status === 'edited';
+  const showValidationBadge = Boolean(answerValidation && answerValidation.status !== 'checked');
   return (
-    <div className={styles.csec} data-testid={`section-${label.replace(/\s+/g, '-').toLowerCase()}`}>
+    <div
+      className={styles.csec}
+      data-testid={`section-${label.replace(/\s+/g, '-').toLowerCase()}`}
+      data-validation-status={answerValidation?.status}
+    >
       <div className={styles.ctitle}>
-        {label} {answerValidation && <AnswerValidationBadge validation={answerValidation} />}{' '}
-        {section && <ConfidenceChip level={level} />}
+        {label} {showValidationBadge && answerValidation && <AnswerValidationBadge validation={answerValidation} />}{' '}
+        {level && <ConfidenceChip level={level} />}
       </div>
       <AnswerValidationSummary validation={answerValidation} />
       {level === 'red' ? (
