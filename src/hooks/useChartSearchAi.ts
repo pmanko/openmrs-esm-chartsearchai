@@ -17,7 +17,12 @@ import {
   startNewChat,
 } from '../api/chartsearchai';
 import { type ChartSearchAiConfig } from '../config-schema';
-import { chatSessionStore, chatSessionUserGeneration, requestProviderFor } from '../store/chat-session.store';
+import {
+  chatSessionStore,
+  chatSessionUserGeneration,
+  providerSupportsInDepth,
+  requestProviderFor,
+} from '../store/chat-session.store';
 import { refreshHubProfiles, useHubProfileDiscovery } from './hub-profile-discovery';
 import {
   ANSWER_CHECK_INTERRUPTED_SUMMARY_CODE,
@@ -834,6 +839,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
       // default provider, never a silent cross-provider fallback.
       // Multi-turn streaming: chat history is reconstructed server-side
       // from the session uuid; we only send the new question.
+      const inDepth = providerSupportsInDepth(state, selectedProviderId) ? Boolean(state.inDepthEnabled) : undefined;
       chatPatientChartStream(
         patientUuid,
         sessionUuid,
@@ -925,6 +931,7 @@ export function useChartSearchAi(patientUuid?: string): UseChartSearchAiReturn {
         selectedProfileId,
         selectedProviderId,
         selectedProviderId ? state.providerCapabilities?.[selectedProviderId] : undefined,
+        ...(typeof inDepth === 'boolean' ? [{ inDepth }] : []),
       );
     },
     [sessionUuidByPatient, config.useStreaming, stopCurrent],

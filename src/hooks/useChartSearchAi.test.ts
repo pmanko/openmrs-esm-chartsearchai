@@ -2888,4 +2888,34 @@ describe('useChartSearchAi history with an unanswered question', () => {
     expect(result.current.messages[0].safetyStatus).toBe('unavailable');
     expect(result.current.messages[0].safetyCheck).toEqual({ status: 'unavailable', issues: ['execution_failed'] });
   });
+
+  it('forwards live inDepth preference when the active provider declares indepth capability', async () => {
+    mockFetchHistory.mockResolvedValueOnce({ session: 'srv-session-1', provider: 'hub', messages: [] });
+    mockChatStream.mockImplementation(() => {});
+    chatSessionStore.setState({
+      selectedProviderId: 'hub',
+      selectedProfileId: 'gemma-4-12b',
+      profileDiscoveryStatus: 'ready',
+      providerCapabilities: { hub: ['answer', 'indepth'] },
+      inDepthEnabled: true,
+    });
+    const { result } = renderHook(() => useChartSearchAi('patient-uuid'));
+    await waitFor(() => expect(mockFetchHistory).toHaveBeenCalled());
+
+    act(() => {
+      result.current.submitQuestion('patient-uuid', 'What ART changes are needed?');
+    });
+
+    expect(mockChatStream).toHaveBeenCalledWith(
+      'patient-uuid',
+      'srv-session-1',
+      'What ART changes are needed?',
+      expect.any(Object),
+      expect.any(AbortController),
+      'gemma-4-12b',
+      'hub',
+      ['answer', 'indepth'],
+      { inDepth: true },
+    );
+  });
 });

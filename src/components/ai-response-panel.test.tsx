@@ -4183,4 +4183,53 @@ describe('an answer that opens with its bottom line', () => {
     expect(mergeDisclosure(merged, { answerSummary: null }).answerSummary).toBe(SUMMARY);
     expect(mergeDisclosure(NO_ANSWER_LIMITS, { answerDetailsStateLimits: true }).answerDetailsStateLimits).toBe(true);
   });
+
+  it('labels KnowledgeReference citations as Clinical guideline with clickable external WHO URLs and clean body', () => {
+    const guidelineRef: AiReference = {
+      index: 7,
+      resourceType: 'KnowledgeReference',
+      resourceUuid: 'hiv-d4t-phaseout',
+      date: '',
+      group: 'reference',
+      grounded: null,
+      title: 'Stavudine (d4T) is no longer recommended',
+      source: 'knowledge-base',
+      sourceText:
+        'Stavudine (d4T) is no longer recommended: WHO advised phasing out stavudine due to mitochondrial toxicity.',
+      provenance: {
+        authority: 'WHO Consolidated guidelines on HIV',
+        section: 'WHO HIV 2021 Section 4.3',
+        version: '2021',
+        url: 'https://www.who.int/publications/i/item/9789240031593',
+      },
+    };
+    render(
+      <AiResponsePanel
+        answer="Stavudine should be phased out [7]."
+        references={[guidelineRef]}
+        error={null}
+        phase="complete"
+        patientUuid="patient-1"
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Sources (1)'));
+    const extLink = screen.getByRole('link', { name: 'Stavudine (d4T) is no longer recommended' });
+    expect(extLink).toHaveAttribute('href', 'https://www.who.int/publications/i/item/9789240031593');
+    expect(extLink).toHaveAttribute('target', '_blank');
+    expect(
+      screen.getByText(/WHO Consolidated guidelines on HIV · WHO HIV 2021 Section 4\.3 · 2021/),
+    ).toBeInTheDocument();
+
+    const guidelineBtn = screen.getByRole('button', { name: '[7] Clinical guideline' });
+    fireEvent.click(guidelineBtn);
+    const region = screen.getByRole('region', { name: '[7] Clinical guideline' });
+    expect(
+      within(region).getByText('WHO advised phasing out stavudine due to mitochondrial toxicity.'),
+    ).toBeInTheDocument();
+    expect(within(region).getByRole('link', { name: /WHO Consolidated guidelines on HIV/ })).toHaveAttribute(
+      'href',
+      'https://www.who.int/publications/i/item/9789240031593',
+    );
+  });
 });

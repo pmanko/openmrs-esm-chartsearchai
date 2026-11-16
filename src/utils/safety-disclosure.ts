@@ -9,7 +9,12 @@ import type { AiReference, AiSafetyWarning } from '../api/chartsearchai';
  * `active_drug_order` is deliberately absent — the module injects it, but it is the patient's
  * own order carrying a real `Order` uuid, so it groups as `chart` and navigates.
  */
-export const REFERENCE_RESOURCE_TYPES = ['drug_reference', 'safety_finding', 'drug_class_note'] as const;
+export const REFERENCE_RESOURCE_TYPES = [
+  'drug_reference',
+  'knowledgereference',
+  'safety_finding',
+  'drug_class_note',
+] as const;
 const REFERENCE_RESOURCE_TYPE_SET: ReadonlySet<string> = new Set(REFERENCE_RESOURCE_TYPES);
 
 /**
