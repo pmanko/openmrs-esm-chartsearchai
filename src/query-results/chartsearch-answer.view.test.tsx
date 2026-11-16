@@ -528,7 +528,7 @@ describe('the Ask ChartSearch view', () => {
       );
       expect(await screen.findByText('Unsupported')).toBeInTheDocument();
       const safetyBox = screen.getByTestId('ai-response-safety');
-      expect(safetyBox).toHaveTextContent('Limited safety check');
+      expect(safetyBox).not.toHaveTextContent('Limited safety check');
       expect(safetyBox).toHaveTextContent('Ibuprofen: Bleeding risk');
 
       await act(async () => stream.write(frame('turn_done', turnEnvelope({ auditLogId: 42 }))));

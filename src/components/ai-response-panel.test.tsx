@@ -89,7 +89,7 @@ describe('AiResponsePanel reference links', () => {
   const answer =
     'The patient has lab results [1] and an active order [2]. They have an allergy [3], a condition [4], and a diagnosis [5].';
 
-  it('starts Citation details collapsed even when there are no evidence tiles, and opens it on click', () => {
+  it('starts Sources collapsed and opens it on click', () => {
     render(
       <AiResponsePanel
         answer={answer}
@@ -102,9 +102,10 @@ describe('AiResponsePanel reference links', () => {
     );
 
     expect(screen.queryByText('Evidence Used')).not.toBeInTheDocument();
-    const details = screen.getByText('Citation details').closest('details');
+    expect(screen.queryByText('Citation details')).not.toBeInTheDocument();
+    const details = screen.getByText('Sources (5)').closest('details');
     expect(details).not.toHaveAttribute('open');
-    fireEvent.click(screen.getByText('Citation details'));
+    fireEvent.click(screen.getByText('Sources (5)'));
     expect(details).toHaveAttribute('open');
     expect(screen.getAllByRole('link')).toHaveLength(10);
 
@@ -130,7 +131,7 @@ describe('AiResponsePanel reference links', () => {
     expect(diagnosisLink).toHaveAttribute('href', `/openmrs/spa/patient/${patientUuid}/chart/Visits`);
   });
 
-  it('renders resolved hub references as evidence tiles with source text', () => {
+  it('renders resolved hub references in collapsed Sources with source text', () => {
     render(
       <AiResponsePanel
         answer="The last visit was documented on 2026-01-26 [4]."
@@ -155,24 +156,32 @@ describe('AiResponsePanel reference links', () => {
       />,
     );
 
-    expect(screen.getByText('Evidence Used')).toBeInTheDocument();
-    expect(screen.getByText('[4] · encounter · 2026-01-26')).toBeInTheDocument();
-    expect(screen.getByText('Adult visit on 2026-01-26')).toBeInTheDocument();
+    expect(screen.queryByText('Evidence Used')).not.toBeInTheDocument();
+    expect(screen.queryByText('Citation details')).not.toBeInTheDocument();
+    const details = screen.getByText('Sources (1)').closest('details');
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Sources (1)'));
+    expect(details).toHaveAttribute('open');
+
+    const row = screen.getByText('Adult visit on 2026-01-26').closest('.referenceItem')!;
+    expect(within(row as HTMLElement).getByText('[4] encounter — 2026-01-26')).toBeInTheDocument();
     expect(
-      screen.getByText('Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower'),
+      within(row as HTMLElement).getByText(
+        'Encounter: Adult Visit at Unknown Location. Provider: Horatio L Hornblower',
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText(/UUID: enc-4/)).toBeInTheDocument();
-    expect(screen.getByText('Source found')).toBeInTheDocument();
-    const card = screen.getByText('Adult visit on 2026-01-26').closest('.evidenceCard')!;
-    expect(within(card as HTMLElement).getByText('Verified')).toBeVisible();
-    expect(screen.getByText('Used in: answer')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Citation details'));
-    // The ledger id and raw status enums are not drawn: the translated badges carry the status.
+    expect(within(row as HTMLElement).getByText('Verified')).toBeVisible();
+    // Internal identifiers, raw statuses, and redundant tags stay omitted from rows.
+    expect(screen.queryByText(/UUID: enc-4/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Source found')).not.toBeInTheDocument();
+    expect(screen.queryByText('Used in: answer')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Source: querystore/i)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/Source: querystore/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/querystore:encounter:enc-4/)).not.toBeInTheDocument();
     expect(screen.queryByText(/· resolved ·/)).not.toBeInTheDocument();
   });
 
-  it('uses the server evidence group and draws no withheld-interaction count', () => {
+  it('uses the server evidence group and puts external dataset attribution in hover title', () => {
     render(
       <AiResponsePanel
         answer="A medication-safety finding was generated [8]."
@@ -197,16 +206,17 @@ describe('AiResponsePanel reference links', () => {
       />,
     );
 
-    expect(screen.getByText('Source: WHO-ATC research package')).toBeInTheDocument();
-    // As in Citation details: the partners a reference record leaves out are read by the safety
-    // check regardless, so a count would read as an incomplete check that was not.
+    fireEvent.click(screen.getByText('Sources (1)'));
+    expect(screen.queryByText('Source: WHO-ATC research package')).not.toBeInTheDocument();
+    expect(screen.getByText('[8] Safety finding')).toHaveAttribute('title', 'Source: WHO-ATC research package');
+    // Unshown partners are still read by the safety check; no count is rendered.
     expect(screen.queryByText(/additional interactions|subset/)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Potential class interaction.' })).not.toBeInTheDocument();
     expect(
       screen.getAllByTitle(
         'The module’s own safety finding, computed from this patient’s chart — not a chart record to open.',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it('keeps legacy safety findings off patient-chart links when group metadata is absent', () => {
@@ -231,15 +241,16 @@ describe('AiResponsePanel reference links', () => {
       />,
     );
 
+    fireEvent.click(screen.getByText('Sources (1)'));
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(
       screen.getAllByTitle(
         'The module’s own safety finding, computed from this patient’s chart — not a chart record to open.',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
-  it('shows an unresolved citation as a missing-source evidence tile', () => {
+  it('shows an unresolved citation as missing source in Sources', () => {
     render(
       <AiResponsePanel
         answer="Unsupported citation [99]."
@@ -262,12 +273,14 @@ describe('AiResponsePanel reference links', () => {
       />,
     );
 
-    expect(screen.getByText('Evidence Used')).toBeInTheDocument();
+    expect(screen.queryByText('Evidence Used')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Sources (1)'));
+    expect(screen.getByText('[99] unknown')).toBeInTheDocument();
     expect(screen.getByText('Source missing')).toBeInTheDocument();
-    expect(screen.getByText('unknown 99')).toBeInTheDocument();
+    expect(screen.queryByText('unknown 99')).not.toBeInTheDocument();
   });
 
-  it('shows title-only resolved evidence without duplicating source-derived titles', () => {
+  it('strips leading reference date prefixes once in Sources', () => {
     const { rerender } = render(
       <AiResponsePanel
         answer="A supported answer [7]."
@@ -290,6 +303,7 @@ describe('AiResponsePanel reference links', () => {
       />,
     );
 
+    fireEvent.click(screen.getByText('Sources (1)'));
     expect(screen.getByText('Medication order')).toBeInTheDocument();
 
     rerender(
@@ -935,7 +949,7 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.queryByText('Safety check unavailable')).not.toBeInTheDocument();
   });
 
-  it('still tags an unavailable status when the safety check has something to report', () => {
+  it('hides unavailable safety UI when no warnings fired', () => {
     render(
       <AiResponsePanel
         answer="Ibuprofen could be considered [1]."
@@ -950,16 +964,18 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
-    expect(screen.getByText('Safety check unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-response-safety')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('safety-check-summary')).not.toBeInTheDocument();
+    expect(screen.queryByText('Answer safety check:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Safety check unavailable')).not.toBeInTheDocument();
   });
 
-  it('says the safety check did not complete for an answer stopped while it ran', () => {
+  it('says the safety check did not complete in collapsed details when a warning is present', () => {
     render(
       <AiResponsePanel
         answer="Ibuprofen may interact with warfarin [1]."
         references={[]}
-        safetyWarnings={[]}
+        safetyWarnings={[{ type: 'drug_interaction', drug: 'Ibuprofen', detail: 'May interact with warfarin.' }]}
         safetyStatus="unavailable"
         safetyCheck={{ status: 'unavailable', issues: ['execution_failed'] }}
         auditLogId={42}
@@ -969,10 +985,16 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('The medication-safety check did not complete.')).toBeInTheDocument();
+    expect(screen.getByTestId('ai-response-safety')).toBeInTheDocument();
+    expect(screen.queryByText('Safety check unavailable')).not.toBeInTheDocument();
+    const summary = screen.getByTestId('safety-check-summary');
+    expect(summary).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Medication safety details'));
+    expect(summary).toHaveAttribute('open');
+    expect(summary).toHaveTextContent('The medication-safety check did not complete.');
   });
 
-  it('surfaces a limited safety status even with no warnings', () => {
+  it('hides a limited safety status when no warnings fired', () => {
     render(
       <AiResponsePanel
         answer="Ibuprofen could be considered [1]."
@@ -986,16 +1008,18 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Answer safety check:')).toBeInTheDocument();
-    expect(screen.getByText('Limited safety check')).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-response-safety')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('safety-check-summary')).not.toBeInTheDocument();
+    expect(screen.queryByText('Answer safety check:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Limited safety check')).not.toBeInTheDocument();
   });
 
-  it('explains a limited check with readable package and coverage details', () => {
+  it('explains a limited check in collapsed details when safety warnings are present', () => {
     render(
       <AiResponsePanel
         answer="Ibuprofen could be considered [1]."
         references={[]}
-        safetyWarnings={[]}
+        safetyWarnings={[{ type: 'drug_interaction', drug: 'Ibuprofen', detail: 'NSAID gastrointestinal caution.' }]}
         safetyStatus="limited"
         safetyCheck={{
           schema_version: 'drug_safety.v1',
@@ -1030,7 +1054,11 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
+    expect(screen.queryByText('Limited safety check')).not.toBeInTheDocument();
     const summary = screen.getByTestId('safety-check-summary');
+    expect(summary).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Medication safety details'));
+    expect(summary).toHaveAttribute('open');
     expect(summary).toHaveTextContent('Medication safety details');
     expect(summary).toHaveTextContent('research source is not clinically approved');
     expect(summary).toHaveTextContent('cross-reactivity rules are not clinically approved');
@@ -1049,12 +1077,12 @@ describe('AiResponsePanel safety warnings', () => {
     ['interaction_reference_unavailable', 'A medication in this check has no usable interaction reference data.'],
     ['dose_not_assessable', 'The answer did not supply a dose and schedule that this check could assess.'],
     ['weight_unavailable', 'A weight-based dose check could not run because the patient weight was unavailable.'],
-  ])('explains the specific safety limitation %s', (issue, explanation) => {
+  ])('explains the specific safety limitation %s when warnings fired', (issue, explanation) => {
     render(
       <AiResponsePanel
         answer="Recorded medication."
         references={[]}
-        safetyWarnings={[]}
+        safetyWarnings={[{ type: 'drug_interaction', drug: 'Ibuprofen', detail: 'NSAID caution.' }]}
         safetyStatus="limited"
         safetyCheck={{ status: 'limited', issues: [issue] }}
         auditLogId={42}
@@ -1064,6 +1092,7 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
     const summary = screen.getByTestId('safety-check-summary');
+    fireEvent.click(screen.getByText('Medication safety details'));
     expect(summary).toHaveTextContent(explanation);
     expect(summary).not.toHaveTextContent('Medication, allergy, or condition context may be incomplete');
   });
@@ -1111,12 +1140,12 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.queryByTestId('safety-check-summary')).not.toBeInTheDocument();
   });
 
-  it('explains malformed primary and relationship reference data in plain language', () => {
+  it('explains malformed primary and relationship reference data in plain language when warnings fired', () => {
     render(
       <AiResponsePanel
         answer="Ibuprofen could be considered [1]."
         references={[]}
-        safetyWarnings={[]}
+        safetyWarnings={[{ type: 'drug_interaction', drug: 'Ibuprofen', detail: 'NSAID caution.' }]}
         safetyStatus="limited"
         safetyCheck={{
           status: 'limited',
@@ -1136,6 +1165,8 @@ describe('AiResponsePanel safety warnings', () => {
     );
 
     const summary = screen.getByTestId('safety-check-summary');
+    expect(summary).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Medication safety details'));
     expect(summary).toHaveTextContent('Some medication-safety reference records were invalid and ignored.');
     expect(summary).toHaveTextContent(
       'The medication-safety rule package is missing required source identity information.',
@@ -1195,8 +1226,8 @@ describe('AiResponsePanel safety warnings', () => {
     expect(screen.getByTestId('safety-check-summary')).toHaveTextContent('Source: Medication review board');
   });
 
-  it('shows a clean checked result and its source packages without requiring a warning', () => {
-    render(
+  it('hides checked status badge and shows source packages only when a warning fired', () => {
+    const { rerender } = render(
       <AiResponsePanel
         answer="No medication issue was found."
         references={[]}
@@ -1225,8 +1256,43 @@ describe('AiResponsePanel safety warnings', () => {
       />,
     );
 
-    expect(screen.getByText('Checked')).toBeInTheDocument();
+    expect(screen.queryByText('Checked')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ai-response-safety')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('safety-check-summary')).not.toBeInTheDocument();
+
+    rerender(
+      <AiResponsePanel
+        answer="Medication caution noted."
+        references={[]}
+        safetyWarnings={[{ type: 'drug_interaction', drug: 'Ibuprofen', detail: 'NSAID caution.' }]}
+        safetyStatus="checked"
+        safetyCheck={{
+          status: 'checked',
+          package: {
+            id: 'approved-medication-rules',
+            version: '3',
+            provenance: { source: 'Local clinical formulary' },
+            review_state: 'clinically_approved',
+            cross_reactivity: {
+              id: 'approved-relationships',
+              version: '2',
+              provenance: { source: 'Medication review board' },
+              review_state: 'clinically_approved',
+            },
+          },
+          issues: [],
+        }}
+        auditLogId={42}
+        error={null}
+        phase="complete"
+        patientUuid={patientUuid}
+      />,
+    );
+
+    expect(screen.queryByText('Checked')).not.toBeInTheDocument();
     const summary = screen.getByTestId('safety-check-summary');
+    expect(summary).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Medication safety details'));
     expect(summary).toHaveTextContent('Medication safety details');
     expect(summary).toHaveTextContent('approved-medication-rules (3) - clinically approved');
     expect(summary).toHaveTextContent('approved-relationships (2) - clinically approved');
@@ -3661,7 +3727,7 @@ describe('AiResponsePanel chips naming their own record', () => {
 });
 
 describe('upstream clinical disclosures in staged presentation', () => {
-  it('withholds a misattributed record link in both the staged answer and evidence card', () => {
+  it('withholds a misattributed record link in both the staged answer and Sources row', () => {
     render(
       <AiResponsePanel
         answer="Recorded medication [1]."
@@ -3689,9 +3755,10 @@ describe('upstream clinical disclosures in staged presentation', () => {
       'title',
       'The module reports that this citation may not be the medication order this sentence names, so it is not offered as a link. This is a report about the citation, not a verdict on the safety finding.',
     );
-    const card = screen.getByText('Medication chart source').closest('.evidenceCard')!;
-    expect(within(card as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText('1')).toHaveAttribute(
+    fireEvent.click(screen.getByText('Sources (1)'));
+    const row = screen.getByText('Medication chart source').closest('.referenceItem')!;
+    expect(within(row as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText('Not the order named')).toHaveAttribute(
       'title',
       'The module reports that this citation may not be the medication order this sentence names, so it is not offered as a link. This is a report about the citation, not a verdict on the safety finding.',
     );
