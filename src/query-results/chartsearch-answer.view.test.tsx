@@ -792,5 +792,50 @@ describe('the Ask ChartSearch view', () => {
 
       expect(await screen.findByText(new RegExp(`^A{${maxAnswerCharacters}}$`))).toBeInTheDocument();
     });
+
+    it('sends inDepth flag and re-queries live when the user toggles In depth on hub provider', async () => {
+      const user = userEvent.setup();
+      mockOpenmrsFetch.mockImplementation((url: string) => {
+        if (url.includes('/ws/rest/v1/chartsearchai/providers')) {
+          return Promise.resolve({
+            data: {
+              providers: [
+                { id: 'hub', name: 'Med-Agent Hub', enabled: true, ready: true, capabilities: ['answer', 'indepth'] },
+              ],
+              defaultProvider: 'hub',
+            },
+          });
+        }
+        if (url.includes('/ws/rest/v1/chartsearchai/models')) {
+          return Promise.resolve({
+            data: {
+              data: [
+                { id: 'gemma-4-12b', label: 'Gemma 4 12B', available: true, default: true, selection_priority: 10 },
+              ],
+            },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      const firstStream = streamingResponse();
+      const secondStream = streamingResponse();
+      fetchMock.mockResolvedValueOnce(firstStream.response).mockResolvedValueOnce(secondStream.response);
+      renderView(question, true);
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      const firstBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      expect(firstBody.inDepth).toBe(false);
+
+      await act(async () => firstStream.write(frame('turn_done', turnEnvelope())));
+      await act(async () => firstStream.end());
+
+      const toggle = await screen.findByRole('switch', { name: /In depth/i });
+      await user.click(toggle);
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      const secondBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      expect(secondBody.inDepth).toBe(true);
+    });
   });
 });

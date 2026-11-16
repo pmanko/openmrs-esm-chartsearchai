@@ -372,4 +372,26 @@ describe('ModelPicker', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(chatSessionStore.getState().selectedProfileId).toBeNull();
   });
+
+  it('shows a live In depth toggle when the active provider advertises indepth capability', async () => {
+    mockFetch.mockResolvedValueOnce(PROFILE_DATA);
+    chatSessionStore.setState({
+      providerCapabilities: { hub: ['answer', 'indepth'], bundled: ['answer'] },
+    });
+    render(<ModelPicker />);
+    const toggle = await screen.findByRole('switch', { name: /In depth/i });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(chatSessionStore.getState().inDepthEnabled).toBe(true);
+    expect(toggle).toBeChecked();
+  });
+
+  it('omits the In depth toggle when the active provider lacks indepth capability', async () => {
+    chatSessionStore.setState({
+      selectedProviderId: 'bundled',
+      providerCapabilities: { bundled: ['answer', 'token_streaming'] },
+    });
+    render(<ModelPicker />);
+    expect(screen.queryByRole('switch', { name: /In depth/i })).not.toBeInTheDocument();
+  });
 });
